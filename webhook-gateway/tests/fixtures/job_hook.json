@@ -1,0 +1,24 @@
+{
+  "object_kind": "build",
+  "ref": "feat/employees-api",
+  "tag": false,
+  "sha": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+  "build_id": 9002,
+  "build_name": "docker-build",
+  "build_stage": "build",
+  "build_status": "failed",
+  "build_allow_failure": false,
+  "build_failure_reason": "script_failure",
+  "pipeline_id": 512,
+  "project_id": 12346,
+  "project_name": "acme / backend-api",
+  "user": {
+    "id": 111222333,
+    "name": "Backend Dev",
+    "username": "be-dev-1"
+  },
+  "repository": {
+    "name": "backend-api",
+    "homepage": "https://gitlab.example.com/acme/backend-api"
+  }
+}

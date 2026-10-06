@@ -1,0 +1,60 @@
+# Project registry — single source of truth for the workspace (design §A.3, §4.4, §6.4).
+#
+# * Only projects listed here are accepted by the Webhook Gateway (allowlist).
+# * `default_worker` / `allowed_workers` drive deterministic routing.
+# * `opt_in_label`: agents only start work on Issues carrying this label (DECISION-13).
+# * `auto_push_branches: []` = every push needs human approval (DECISION-8: no auto-push
+#   for the first 2 months).
+# * `data_classification` + `llm_backend` implement the hybrid LLM policy (DECISION-3):
+#   `restricted`/`confidential` repos should use `ollama`.
+#
+# Replace the placeholder ids/paths with the pilot repos chosen in DECISION-11.
+
+projects:
+  - key: frontend-app
+    gitlab_project_id: 12345                 # TODO(DECISION-11): real GitLab project id
+    path_with_namespace: "acme/frontend-app" # TODO(DECISION-11)
+    workspace_path: /workspace/frontend-app
+    default_worker: dev-frontend
+    allowed_workers: [dev-frontend, reviewer, qa]
+    test_command: "npm run check:all"
+    e2e_port: 3001
+    opt_in_label: agent-ready
+    auto_push_branches: []
+    data_classification: internal
+    llm_backend: cloud
+
+  - key: backend-api
+    gitlab_project_id: 12346                 # TODO(DECISION-11)
+    path_with_namespace: "acme/backend-api"  # TODO(DECISION-11)
+    workspace_path: /workspace/backend-api
+    default_worker: dev-backend
+    allowed_workers: [dev-backend, reviewer, qa]
+    test_command: "pytest -q"
+    opt_in_label: agent-ready
+    auto_push_branches: []
+    data_classification: confidential
+    llm_backend: ollama
+
+  # Smoke-test project used by scripts/send-test-webhook.sh and the daily synthetic check (§8.4).
+  - key: sandbox-smoke
+    gitlab_project_id: 99999
+    path_with_namespace: "acme/sandbox-smoke"
+    workspace_path: /workspace/sandbox-smoke
+    default_worker: dev-backend
+    allowed_workers: [dev-backend, dev-frontend, reviewer, devops, qa]
+    test_command: "./test.sh"
+    opt_in_label: agent-ready
+    auto_push_branches: []
+    data_classification: internal
+    llm_backend: cloud
+
+routing:
+  label_prefix: "area:"
+  label_to_worker:
+    frontend: dev-frontend
+    backend: dev-backend
+    ci: devops
+    qa: qa
+  pipeline_failed_worker: devops
+  unknown_intent: ask_user

@@ -1,0 +1,36 @@
+{
+  "object_kind": "issue",
+  "event_type": "issue",
+  "user": {
+    "id": 987654321,
+    "name": "QA Lead",
+    "username": "qa-lead"
+  },
+  "project": {
+    "id": 12345,
+    "name": "frontend-app",
+    "path_with_namespace": "acme/frontend-app",
+    "web_url": "https://gitlab.example.com/acme/frontend-app",
+    "default_branch": "main"
+  },
+  "object_attributes": {
+    "id": 301,
+    "iid": 89,
+    "title": "Mobile layout overflows on dashboard",
+    "description": "On viewports < 400px the dashboard grid overflows horizontally.",
+    "state": "opened",
+    "action": "open",
+    "url": "https://gitlab.example.com/acme/frontend-app/-/issues/89",
+    "labels": [
+      {"id": 1, "title": "agent-ready"},
+      {"id": 2, "title": "area:frontend"},
+      {"id": 3, "title": "bug"}
+    ]
+  },
+  "labels": [
+    {"id": 1, "title": "agent-ready"},
+    {"id": 2, "title": "area:frontend"},
+    {"id": 3, "title": "bug"}
+  ],
+  "changes": {}
+}

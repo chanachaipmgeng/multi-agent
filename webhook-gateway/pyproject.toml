@@ -1,0 +1,47 @@
+[project]
+name = "emaw-webhook-gateway"
+version = "0.1.0"
+description = "GitLab Webhook Gateway for the Enterprise Multi-Agent Workspace (verify, dedupe, normalize, enqueue)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "pydantic>=2.7,<3",
+    "pydantic-settings>=2.3,<3",
+    "redis>=5.0,<9",
+    "asyncpg>=0.29,<1",
+    "PyYAML>=6.0,<7",
+    "prometheus-client>=0.20,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+    "fakeredis>=2.23",
+    "ruff>=0.5",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: requires a live PostgreSQL (set TEST_DATABASE_URL) or Redis (set TEST_REDIS_URL)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
