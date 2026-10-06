@@ -1,0 +1,53 @@
+# Hermes profile: dev-frontend  (verify key names with `hermes config list` — DECISION-1)
+identity:
+  name: dev-frontend
+  role: frontend-engineer
+  trace_prefix: fe
+
+model:
+  primary: ${LLM_MODEL_CODING:-openrouter/anthropic/claude-3.5-sonnet}   # high-context coding model
+  fallback: ${LLM_FALLBACK_MODEL:-openrouter/openai/gpt-4o}
+  api_key_file: /run/secrets/llm_key_dev_frontend
+  max_context_tokens: 200000
+  # hybrid policy (DECISION-3): projects with llm_backend=ollama use the local endpoint instead
+  local_endpoint: http://inference-ollama:11434
+
+terminal:
+  backend: docker            # checklist #1
+  sandbox:
+    image: ${SANDBOX_IMAGE_NODE:-node:20-bookworm}
+    cpus: 2
+    memory: 4g
+    pids_limit: 512
+    command_timeout_minutes: 20
+    network: egress-allowlist   # npm registry + GitLab only (Phase 4 proxy)
+
+gitlab:
+  base_url: ${GITLAB_BASE_URL:-https://gitlab.com}
+  token_file: /run/secrets/gitlab_token_frontend   # Project Access Token: read_api + write_repository (frontend-app only)
+
+workspace:
+  root: /workspace/frontend-app
+  mode: rw
+  worktrees: /workspace/.worktrees
+  rulebook: project-standards.md
+
+queue:
+  redis_url: redis://redis:6379/0
+  inbox_stream: stream:dev-frontend
+  results_stream: stream:results
+  consumer_group: dev-frontend
+
+policy:
+  agent_md: /opt/data/AGENT.md
+  platform_policy: /config/policies/platform-policy.yaml
+  projects: /config/projects.yaml
+  allowed_projects: [frontend-app, sandbox-smoke]
+
+budgets:
+  token_budget_per_task: 400000
+  self_heal_limit: 3
+
+skills_dir: /opt/data/skills
+memory_dir: /opt/data/memory
+log_level: ${HERMES_LOG_LEVEL:-info}

@@ -1,0 +1,49 @@
+# Hermes profile: devops  (verify key names with `hermes config list` — DECISION-1)
+identity:
+  name: devops
+  role: devops-incident-responder
+  trace_prefix: ops
+
+model:
+  primary: ${LLM_MODEL_CODING:-openrouter/anthropic/claude-3.5-sonnet}
+  fallback: ${LLM_FALLBACK_MODEL:-openrouter/openai/gpt-4o}
+  api_key_file: /run/secrets/llm_key_devops
+  max_context_tokens: 200000
+
+terminal:
+  backend: docker
+  sandbox:
+    image: ${SANDBOX_IMAGE_DEVOPS:-docker:27-cli}   # docker CLI for `docker build` against a DinD sidecar, never the host socket
+    cpus: 2
+    memory: 4g
+    pids_limit: 512
+    command_timeout_minutes: 20
+
+gitlab:
+  base_url: ${GITLAB_BASE_URL:-https://gitlab.com}
+  token_file: /run/secrets/gitlab_token_ci   # read_api + write_repository
+
+workspace:
+  root: /workspace
+  mode: rw
+  allowed_paths: [".gitlab-ci.yml", "Dockerfile*", "docker-compose*.yml", "deploy/**", "infra/**", ".github/**"]
+  worktrees: /workspace/.worktrees
+
+queue:
+  redis_url: redis://redis:6379/0
+  inbox_stream: stream:devops
+  results_stream: stream:results
+  consumer_group: devops
+
+policy:
+  agent_md: /opt/data/AGENT.md
+  platform_policy: /config/policies/platform-policy.yaml
+  projects: /config/projects.yaml
+
+budgets:
+  token_budget_per_task: 300000
+  self_heal_limit: 2
+
+skills_dir: /opt/data/skills
+memory_dir: /opt/data/memory
+log_level: ${HERMES_LOG_LEVEL:-info}

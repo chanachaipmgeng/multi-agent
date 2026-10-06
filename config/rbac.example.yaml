@@ -1,0 +1,26 @@
+# RBAC for the coordinator (design §6.2). Enforced in Phase 3; in Phase 0 the Telegram allowlist
+# (`telegram.allowed_users`) is the only gate. Copy to hermes-data/coordinator/rbac.yaml and fill in
+# real Telegram user ids. Separation of duties: `approver` is never also `developer` on the same
+# repo in production (DECISION-8) — the admin bootstrap user below is the only exception for the pilot.
+users:
+  987654321: { name: "zeeme", roles: [admin, approver, developer], projects: ["*"] }   # pilot bootstrap
+  111222333: { name: "fe-dev-1", roles: [developer], projects: ["frontend-app"] }
+  444555666: { name: "qa-lead",  roles: [viewer],    projects: ["*"] }
+
+roles:
+  viewer:     { description: "ask status, read reports" }
+  developer:  { description: "run dev skills on own repos, approve push/MR of own repos" }
+  maintainer: { description: "developer on all repos + edit project-standards.md via agent" }
+  approver:   { description: "approve deploy-prod, migrations, infra changes" }
+  admin:      { description: "manage allowlist, rotate tokens, kill switch, edit projects/rbac" }
+
+commands:
+  dev-flow:            { roles: [developer, maintainer] }
+  resolve-issue:       { roles: [developer, maintainer] }
+  review-code:         { roles: [developer, maintainer] }
+  status-report:       { roles: [viewer, developer, maintainer, approver, admin] }
+  deploy-prod:         { roles: [approver] }
+  approve-push:        { roles: [developer, maintainer] }
+  approve-migration:   { roles: [approver] }
+  pause:               { roles: [admin] }
+  safe-mode:           { roles: [admin] }

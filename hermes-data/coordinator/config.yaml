@@ -1,0 +1,55 @@
+# Hermes profile: coordinator  (verify key names with `hermes config list` — DECISION-1)
+identity:
+  name: coordinator
+  role: project-coordinator
+  trace_prefix: coord
+  telegram_display: "EMAW Coordinator"
+
+model:
+  primary: ${LLM_MODEL_COORDINATOR:-openrouter/anthropic/claude-3.5-sonnet}   # mid-tier, fast (routing/summary)
+  fallback: ${LLM_FALLBACK_MODEL:-openrouter/openai/gpt-4o-mini}
+  api_key_file: /run/secrets/llm_key_coordinator
+  max_context_tokens: 128000
+
+terminal:
+  backend: docker            # checklist #1 — never "host"
+  sandbox:
+    read_only_tools: true    # coordinator only inspects; never mutates repos
+    cpus: 1
+    memory: 2g
+
+telegram:
+  token_file: /run/secrets/telegram_token
+  allowed_users: ${TELEGRAM_ALLOWED_USERS}      # comma-separated Telegram user ids (D0.3)
+  approval_ui: inline_keyboard                  # fall back to "y/n" text if unsupported
+
+gitlab:
+  base_url: ${GITLAB_BASE_URL:-https://gitlab.com}
+  token_file: /run/secrets/gitlab_token_readonly   # scope: read_api only
+
+workspace:
+  root: /workspace
+  mode: ro
+
+queue:
+  redis_url: redis://redis:6379/0
+  inbox_stream: stream:tasks
+  results_stream: stream:results
+  consumer_group: coordinator
+  heartbeat_seconds: 60
+
+task_store:
+  database_url_env: DATABASE_URL
+
+policy:
+  agent_md: /opt/data/AGENT.md
+  platform_policy: /config/policies/platform-policy.yaml
+  projects: /config/projects.yaml
+  rbac: /opt/data/rbac.yaml
+
+budgets:
+  token_budget_per_task: 50000
+
+skills_dir: /opt/data/skills
+memory_dir: /opt/data/memory
+log_level: ${HERMES_LOG_LEVEL:-info}

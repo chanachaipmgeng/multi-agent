@@ -1,0 +1,54 @@
+# Hermes profile: dev-backend  (verify key names with `hermes config list` — DECISION-1)
+identity:
+  name: dev-backend
+  role: backend-engineer
+  trace_prefix: be
+
+model:
+  primary: ${LLM_MODEL_CODING:-openrouter/anthropic/claude-3.5-sonnet}
+  fallback: ${LLM_FALLBACK_MODEL:-openrouter/openai/gpt-4o}
+  api_key_file: /run/secrets/llm_key_dev_backend
+  max_context_tokens: 200000
+  # backend-api is classified `confidential` in projects.yaml → tasks arrive with llm_backend=ollama
+  local_endpoint: http://inference-ollama:11434
+  local_model: ${OLLAMA_CODING_MODEL:-qwen2.5-coder:32b}
+
+terminal:
+  backend: docker
+  sandbox:
+    image: ${SANDBOX_IMAGE_PYTHON:-python:3.12-bookworm}
+    cpus: 2
+    memory: 4g
+    pids_limit: 512
+    command_timeout_minutes: 20
+    network: egress-allowlist   # PyPI + GitLab only (Phase 4 proxy)
+
+gitlab:
+  base_url: ${GITLAB_BASE_URL:-https://gitlab.com}
+  token_file: /run/secrets/gitlab_token_backend   # Project Access Token: read_api + write_repository (backend-api only)
+
+workspace:
+  root: /workspace/backend-api
+  mode: rw
+  worktrees: /workspace/.worktrees
+  rulebook: project-standards.md
+
+queue:
+  redis_url: redis://redis:6379/0
+  inbox_stream: stream:dev-backend
+  results_stream: stream:results
+  consumer_group: dev-backend
+
+policy:
+  agent_md: /opt/data/AGENT.md
+  platform_policy: /config/policies/platform-policy.yaml
+  projects: /config/projects.yaml
+  allowed_projects: [backend-api, sandbox-smoke]
+
+budgets:
+  token_budget_per_task: 400000
+  self_heal_limit: 3
+
+skills_dir: /opt/data/skills
+memory_dir: /opt/data/memory
+log_level: ${HERMES_LOG_LEVEL:-info}
