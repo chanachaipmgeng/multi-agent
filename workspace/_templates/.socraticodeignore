@@ -1,0 +1,26 @@
+# .socraticodeignore — keep identical to .agentignore (design §A.6)
+/dist
+/build
+/.next
+/out
+/.angular
+coverage/
+node_modules/
+vendor/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+target/
+*.sqlite3
+*.db
+.env
+.env.*
+*.pem
+*.key
+secrets.*
+credentials.json
+*.log
+npm-debug.log*
+.git/
+.worktrees/

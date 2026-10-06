@@ -1,0 +1,31 @@
+# .agentignore — files Hermes must never read (design §A.6, checklist #3)
+# build outputs
+/dist
+/build
+/.next
+/out
+/.angular
+coverage/
+# dependencies
+node_modules/
+vendor/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+target/
+# data & secrets  (ห้ามเอาออก / never remove)
+*.sqlite3
+*.db
+.env
+.env.*
+*.pem
+*.key
+secrets.*
+credentials.json
+# logs & vcs
+*.log
+npm-debug.log*
+.git/
+# agent worktrees
+.worktrees/
