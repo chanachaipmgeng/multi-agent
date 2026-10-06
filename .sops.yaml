@@ -1,0 +1,10 @@
+# SOPS creation rules (design §6.3 — Phase 0–2 secrets: .env.enc encrypted with age).
+#
+# Generate a key once per operator machine:   make secrets-init   (→ age-keygen)
+# Then replace the placeholder recipient below with the printed `age1...` public key.
+# Multiple recipients (e.g. a second operator + a break-glass key) can be comma separated.
+creation_rules:
+  - path_regex: \.env\.enc$
+    age: "age1placeholderplaceholderplaceholderplaceholderplaceholderplaceh"
+  - path_regex: secrets/.*\.enc$
+    age: "age1placeholderplaceholderplaceholderplaceholderplaceholderplaceh"

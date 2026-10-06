@@ -1,0 +1,48 @@
+# gitleaks configuration for emaw-config (design §6.3, checklist #3 / E7)
+# Runs in pre-commit, in CI (.github/workflows/ci.yml) and inside the agent sandbox before commit.
+
+title = "emaw-config"
+
+[extend]
+useDefault = true
+
+# Extra patterns on top of the default ruleset
+[[rules]]
+id = "gitlab-pat-glpat"
+description = "GitLab personal/project access token"
+regex = '''glpat-[0-9A-Za-z_\-]{20,}'''
+keywords = ["glpat-"]
+
+[[rules]]
+id = "telegram-bot-token"
+description = "Telegram bot token"
+regex = '''\b[0-9]{8,10}:[A-Za-z0-9_-]{35}\b'''
+keywords = [":AA", "bot"]
+
+[[rules]]
+id = "cloudflare-tunnel-token"
+description = "Cloudflare tunnel connector token (base64 JSON, very long)"
+regex = '''eyJhIjoi[A-Za-z0-9+/=]{80,}'''
+keywords = ["eyJhIjoi"]
+
+[[rules]]
+id = "age-secret-key"
+description = "age private key"
+regex = '''AGE-SECRET-KEY-1[0-9A-Z]{58}'''
+keywords = ["AGE-SECRET-KEY-1"]
+
+[allowlist]
+description = "Templates and test fixtures that intentionally contain placeholder values"
+paths = [
+  '''\.env\.example$''',
+  '''webhook-gateway/tests/fixtures/.*\.json$''',
+  '''\.sops\.yaml$''',
+  '''docs/.*\.md$''',
+]
+regexes = [
+  '''placeholder''',
+  '''change-me''',
+  '''<[A-Z_]+>''',
+  '''age1placeholder''',
+  '''test-webhook-secret-not-real''',
+]

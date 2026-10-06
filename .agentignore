@@ -1,0 +1,49 @@
+# .agentignore for the emaw-config repository itself (design §A.6).
+# Agents may read this repo for rulebooks/skills but must never see secrets or runtime data.
+# The same list is shipped to every onboarded project via workspace/_templates/.agentignore.
+
+# build outputs
+/dist
+/build
+/.next
+/out
+/.angular
+coverage/
+
+# dependencies
+node_modules/
+vendor/
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+target/
+
+# data & secrets  (ห้ามเอาออก / never remove)
+*.sqlite3
+*.db
+.env
+.env.*
+!.env.example
+.env.enc
+secrets/
+*.pem
+*.key
+*.age
+secrets.*
+credentials.json
+cloudflared/*.json
+cloudflared/config.yml
+
+# agent runtime state (other agents' memory is off-limits)
+hermes-data/*/memory/
+hermes-data/*/sessions/
+
+# logs & vcs
+*.log
+npm-debug.log*
+.git/
+
+# agent worktrees
+.worktrees/
