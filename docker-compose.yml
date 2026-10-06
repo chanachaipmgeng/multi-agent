@@ -1,0 +1,228 @@
+# Enterprise Multi-Agent Workspace — dev compose (Phase 0 foundation, grows into §A.1)
+#
+# Default services (plain `docker compose up -d`):  redis, postgres, webhook-gateway
+# Profiles:
+#   agents      → 6 Hermes profiles as separate containers (coordinator + 5 workers)
+#   ingress     → cloudflared Named Tunnel connector (needs secrets/tunnel_token)
+#   onprem-llm  → Ollama for repos classified confidential/restricted (DECISION-3)
+#
+# Secrets are file-based (./secrets/*, created by `make secrets-decrypt` from .env.enc via SOPS).
+# No service publishes a port outside 127.0.0.1; external traffic arrives only via the tunnel.
+
+x-hermes-common: &hermes-common
+  # TODO(DECISION-1 / E12): pin to a digest once the Hermes version is confirmed:
+  #   image: nousresearch/hermes-agent@sha256:<digest>
+  image: ${HERMES_IMAGE:-nousresearch/hermes-agent:latest}
+  restart: unless-stopped
+  user: "1000:1000"
+  read_only: true
+  tmpfs: ["/tmp"]
+  cap_drop: ["ALL"]
+  security_opt: ["no-new-privileges:true"]
+  environment:
+    - TZ=${TZ:-Asia/Bangkok}
+    - HERMES_LOG_LEVEL=${HERMES_LOG_LEVEL:-info}
+    - HERMES_DATA_DIR=/opt/data
+    - REDIS_URL=redis://redis:6379/0
+  logging:
+    driver: json-file
+    options: { max-size: "50m", max-file: "5" }
+  depends_on:
+    redis: { condition: service_healthy }
+    postgres: { condition: service_healthy }
+  profiles: ["agents"]
+
+services:
+  # ------------------------------------------------------------ platform
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--save", "", "--maxmemory-policy", "noeviction"]
+    volumes: ["redis-data:/data"]
+    ports: ["127.0.0.1:${REDIS_PORT:-6379}:6379"]
+    networks: [control, workers]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=emaw
+      - POSTGRES_DB=emaw
+      - POSTGRES_PASSWORD_FILE=/run/secrets/pg_password
+    secrets: [pg_password]
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+    ports: ["127.0.0.1:${POSTGRES_PORT:-5432}:5432"]
+    networks: [control]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U emaw -d emaw"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ------------------------------------------------------------- ingress
+  webhook-gateway:
+    build: ./webhook-gateway
+    image: emaw/webhook-gateway:dev
+    environment:
+      - PORT=8700
+      - LOG_LEVEL=${GATEWAY_LOG_LEVEL:-info}
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
+      - PG_PASSWORD_FILE=/run/secrets/pg_password
+      - PROJECTS_FILE=/config/projects.yaml
+      - GITLAB_WEBHOOK_SECRET_FILE=/run/secrets/gitlab_webhook_secret
+      - TASK_STREAM=stream:tasks
+    secrets: [gitlab_webhook_secret, pg_password]
+    volumes: ["./config:/config:ro"]
+    ports: ["127.0.0.1:${GATEWAY_PORT:-8700}:8700"]
+    networks: [edge, control]
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8700/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  cloudflared:
+    # Placeholder until DECISION-5 (domain + Cloudflare account) is confirmed.
+    # Create the tunnel once (see cloudflared/README.md) and put its token in secrets/tunnel_token.
+    image: cloudflare/cloudflared:latest
+    command: ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
+    environment:
+      - TUNNEL_TOKEN_FILE=/run/secrets/tunnel_token
+    secrets: [tunnel_token]
+    networks: [edge]
+    depends_on: [webhook-gateway]
+    profiles: ["ingress"]
+    restart: unless-stopped
+
+  # ------------------------------------------------- hermes agent profiles
+  coordinator:
+    <<: *hermes-common
+    container_name: emaw-coordinator
+    command: ["gateway", "run"]
+    environment:
+      - TZ=${TZ:-Asia/Bangkok}
+      - HERMES_LOG_LEVEL=${HERMES_LOG_LEVEL:-info}
+      - HERMES_DATA_DIR=/opt/data
+      - HERMES_PROFILE=coordinator
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
+    volumes:
+      - ./hermes-data/coordinator:/opt/data
+      - ./workspace:/workspace:ro
+      - ./config:/config:ro
+    secrets: [telegram_token, llm_key_coordinator, gitlab_token_readonly, pg_password]
+    ports: ["127.0.0.1:${HERMES_DASHBOARD_PORT:-9119}:9119"]   # local only; Cloudflare Access in Phase 4
+    networks: [control, workers]
+
+  dev-frontend:
+    <<: *hermes-common
+    container_name: emaw-dev-frontend
+    command: ["gateway", "run"]
+    volumes:
+      - ./hermes-data/dev-frontend:/opt/data
+      - ./workspace/frontend-app:/workspace/frontend-app
+      - ./workspace/.worktrees:/workspace/.worktrees
+      - ./config:/config:ro
+    secrets: [llm_key_dev_frontend, gitlab_token_frontend]
+    networks: [workers]
+    deploy: { resources: { limits: { cpus: "2.0", memory: 4G } } }
+
+  dev-backend:
+    <<: *hermes-common
+    container_name: emaw-dev-backend
+    command: ["gateway", "run"]
+    volumes:
+      - ./hermes-data/dev-backend:/opt/data
+      - ./workspace/backend-api:/workspace/backend-api
+      - ./workspace/.worktrees:/workspace/.worktrees
+      - ./config:/config:ro
+    secrets: [llm_key_dev_backend, gitlab_token_backend]
+    networks: [workers]
+    deploy: { resources: { limits: { cpus: "2.0", memory: 4G } } }
+
+  reviewer:
+    <<: *hermes-common
+    container_name: emaw-reviewer
+    command: ["gateway", "run"]
+    volumes:
+      - ./hermes-data/reviewer:/opt/data
+      - ./workspace:/workspace:ro
+      - ./config:/config:ro
+    secrets: [llm_key_reviewer, socraticode_key, gitlab_token_readonly]
+    networks: [workers]
+
+  devops:
+    <<: *hermes-common
+    container_name: emaw-devops
+    command: ["gateway", "run"]
+    volumes:
+      - ./hermes-data/devops:/opt/data
+      - ./workspace:/workspace
+      - ./config:/config:ro
+    secrets: [llm_key_devops, gitlab_token_ci]
+    networks: [workers]
+
+  qa:
+    <<: *hermes-common
+    container_name: emaw-qa
+    command: ["gateway", "run"]
+    volumes:
+      - ./hermes-data/qa:/opt/data
+      - ./workspace:/workspace
+      - ./config:/config:ro
+    secrets: [llm_key_qa, gitlab_token_qa]
+    networks: [workers]
+    deploy: { resources: { limits: { cpus: "2.0", memory: 6G } } }   # Playwright
+
+  # --------------------------------------------------- optional inference
+  inference-ollama:
+    image: ollama/ollama:latest
+    volumes: ["ollama-data:/root/.ollama"]
+    networks: [inference, workers]
+    profiles: ["onprem-llm"]
+    restart: unless-stopped
+
+secrets:
+  gitlab_webhook_secret: { file: ./secrets/gitlab_webhook_secret }
+  pg_password:           { file: ./secrets/pg_password }
+  tunnel_token:          { file: ./secrets/tunnel_token }
+  telegram_token:        { file: ./secrets/telegram_token }
+  socraticode_key:       { file: ./secrets/socraticode_key }
+  llm_key_coordinator:   { file: ./secrets/llm_key_coordinator }
+  llm_key_dev_frontend:  { file: ./secrets/llm_key_dev_frontend }
+  llm_key_dev_backend:   { file: ./secrets/llm_key_dev_backend }
+  llm_key_reviewer:      { file: ./secrets/llm_key_reviewer }
+  llm_key_devops:        { file: ./secrets/llm_key_devops }
+  llm_key_qa:            { file: ./secrets/llm_key_qa }
+  gitlab_token_readonly: { file: ./secrets/gitlab_token_readonly }
+  gitlab_token_frontend: { file: ./secrets/gitlab_token_frontend }
+  gitlab_token_backend:  { file: ./secrets/gitlab_token_backend }
+  gitlab_token_ci:       { file: ./secrets/gitlab_token_ci }
+  gitlab_token_qa:       { file: ./secrets/gitlab_token_qa }
+
+networks:
+  edge: {}
+  control: {}
+  workers: {}                 # egress to GitLab/LLM allowed; nothing published inbound
+  inference: { internal: true }
+
+volumes:
+  redis-data: {}
+  pg-data: {}
+  ollama-data: {}

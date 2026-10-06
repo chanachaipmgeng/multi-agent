@@ -1,0 +1,28 @@
+# cloudflared Named Tunnel config (design §A.2) — host-run variant for Phase 1–2 on WSL2.
+# Copy to ~/.cloudflared/config.yml (or cloudflared/config.yml, gitignored) after:
+#   cloudflared tunnel login
+#   cloudflared tunnel create emaw
+#   cloudflared tunnel route dns emaw webhook.<org>.com
+# Phase 3 runs cloudflared as a compose service with TUNNEL_TOKEN instead of this file.
+#
+# TODO(DECISION-5): replace <TUNNEL_ID>, <USER>, <org>.com once the domain/account is confirmed.
+
+tunnel: <TUNNEL_ID>
+credentials-file: /home/<USER>/.cloudflared/<TUNNEL_ID>.json
+metrics: 127.0.0.1:2000          # Prometheus scrapes tunnel_up here (Phase 4)
+
+ingress:
+  # GitLab webhooks → Webhook Gateway (only /webhook/* is exposed)
+  - hostname: webhook.<org>.com
+    path: ^/webhook/.*
+    service: http://localhost:8700
+    originRequest:
+      connectTimeout: 10s
+      noTLSVerify: false
+
+  # Hermes dashboard — must sit behind Cloudflare Access (Phase 4); do not enable before that
+  # - hostname: agents.<org>.com
+  #   service: http://localhost:9119
+
+  # Mandatory catch-all
+  - service: http_status:404
