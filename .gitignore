@@ -48,6 +48,10 @@ dist/
 # --- host tools mounted into agent sandboxes (D4.2) --------------------------
 tools/gitleaks
 
+# --- verification evidence (verify-emaw skill) --------------------------------
+.cursor/skills/verify-emaw/evidence/
+.cursor/skills/verify-emaw/.last-run
+
 # --- backups (D4.5; may contain secrets from volumes) ------------------------
 backups/
 
