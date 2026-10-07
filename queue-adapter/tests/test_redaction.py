@@ -1,4 +1,5 @@
-from app.redaction import redact, tail
+from app.redaction import redact, redact_attrs, tail
+from app.notify import dispatch_failed_text, dead_letter_text
 
 
 def test_redacts_known_token_shapes() -> None:
@@ -43,3 +44,44 @@ def test_tail_keeps_end_of_log() -> None:
     assert out.startswith("…[truncated")
     assert out.rstrip().endswith("line 999")
     assert tail("short", 200) == "short"
+
+
+def test_redact_attrs_nested() -> None:
+    attrs = {
+        "detail": "fail Bearer sk-abcdefghijklmnopqrstuvwxyz",
+        "nested": {"token": "glpat-abcdefghijklmnopqrstuvwxyz12"},
+        "n": 1,
+    }
+    out = redact_attrs(attrs)
+    assert "sk-abcdefghijklmnopqrstuvwxyz" not in out["detail"]
+    assert "abcdefghijklmnopqrstuvwxyz12" not in out["nested"]["token"]
+    assert out["n"] == 1
+
+
+def test_notify_helpers_redact_detail() -> None:
+    task = {"task_id": "t1", "trace_id": "tr"}
+    secret = "sk-abcdefghijklmnopqrstuvwxyz"
+    assert secret not in dispatch_failed_text(task, f"err {secret}", 1, 3)
+    assert secret not in dead_letter_text(task, f"dead {secret}")
+
+
+async def test_telegram_send_redacts() -> None:
+    """Notifier.send redacts before POST body."""
+    import json
+
+    import httpx
+    from app.notify import TelegramNotifier
+
+    captured: list[dict] = []
+
+    class CaptureTransport(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+            captured.append(json.loads(request.content.decode()))
+            return httpx.Response(200, json={"ok": True})
+
+    n = TelegramNotifier("token", "123", transport=CaptureTransport())
+    await n.send("leak sk-abcdefghijklmnopqrstuvwxyz here")
+    await n.aclose()
+    assert captured
+    assert "sk-abcdefghijklmnopqrstuvwxyz" not in captured[0]["text"]
+    assert "sk-[REDACTED]" in captured[0]["text"]

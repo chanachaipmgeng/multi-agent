@@ -7,6 +7,8 @@ import logging
 
 import httpx
 
+from .redaction import redact
+
 log = logging.getLogger("emaw.adapter.notify")
 
 
@@ -31,12 +33,13 @@ class TelegramNotifier:
     async def send(self, text: str) -> None:
         if not self.enabled:
             return
+        safe = redact(text)[:4000]
         try:
             r = await self._client.post(
                 "/sendMessage",
                 json={
                     "chat_id": self._chat_id,
-                    "text": text[:4000],
+                    "text": safe,
                     "disable_web_page_preview": True,
                 },
             )
@@ -62,12 +65,12 @@ def task_received_text(task: dict) -> str:
 def dispatch_failed_text(task: dict, detail: str, deliveries: int, max_deliveries: int) -> str:
     return (
         f"⚠️ ส่งงาน {task.get('task_id')} ให้ agent ไม่สำเร็จ (ครั้งที่ {deliveries}/{max_deliveries})\n"
-        f"{detail[:300]}\ntrace: {task.get('trace_id')}"
+        f"{redact(detail)[:300]}\ntrace: {task.get('trace_id')}"
     )
 
 
 def dead_letter_text(task: dict, detail: str) -> str:
     return (
         f"🛑 งาน {task.get('task_id')} ล้มเหลวหลัง retry ครบ → FAILED (dead-letter)\n"
-        f"{detail[:300]}\ntrace: {task.get('trace_id')}"
+        f"{redact(detail)[:300]}\ntrace: {task.get('trace_id')}"
     )

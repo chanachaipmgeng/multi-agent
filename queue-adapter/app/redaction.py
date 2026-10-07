@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"glpat-[0-9A-Za-z_\-]{20,}"), "glpat-[REDACTED]"),
@@ -32,6 +33,26 @@ def redact(text: str) -> str:
     for pattern, replacement in _PATTERNS:
         text = pattern.sub(replacement, text)
     return text
+
+
+def redact_attrs(attrs: dict[str, Any] | None) -> dict[str, Any]:
+    """Recursively redact string values in audit attribute maps."""
+    if not attrs:
+        return {}
+    out: dict[str, Any] = {}
+    for key, value in attrs.items():
+        if isinstance(value, str):
+            out[key] = redact(value)
+        elif isinstance(value, dict):
+            out[key] = redact_attrs(value)
+        elif isinstance(value, list):
+            out[key] = [
+                redact(v) if isinstance(v, str) else (redact_attrs(v) if isinstance(v, dict) else v)
+                for v in value
+            ]
+        else:
+            out[key] = value
+    return out
 
 
 def tail(text: str, max_bytes: int) -> str:

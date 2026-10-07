@@ -61,6 +61,7 @@ limits:
 secrets:
   forbidden_paths_for_agents: [".env", ".env.*", "*.pem", "*.key", "secrets.*", "credentials.json", "secrets/"]
   pre_commit_scan: gitleaks
+  # Source of truth for full regex set: queue-adapter/app/redaction.py (+ Promtail/OTel mirrors)
   redaction_patterns: ["glpat-", "sk-", "Bearer ", "AGE-SECRET-KEY-1"]
   rotation_days: { gitlab_token: 90, webhook_secret: 180 }
 

@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from .redaction import redact_attrs
+
 
 class StateStore(Protocol):
     async def connect(self) -> None: ...
@@ -133,7 +135,7 @@ class MemoryStateStore:
                 "event": event,
                 "trace_id": trace_id,
                 "task_id": task_id,
-                "attrs": attrs or {},
+                "attrs": redact_attrs(attrs),
             }
         )
 
@@ -234,7 +236,7 @@ class PostgresStateStore:
                 task_id,
                 actor,
                 event,
-                json.dumps(attrs or {}, default=str),
+                json.dumps(redact_attrs(attrs), default=str),
             )
 
     async def count_by_state(self) -> dict[str, int]:
