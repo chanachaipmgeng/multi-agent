@@ -57,8 +57,13 @@ hermes-seed: ## write hermes-data/<agent>/.env from ./secrets/*
 up-ingress: ## start the cloudflared tunnel connector (needs secrets/tunnel_token)
 	$(COMPOSE) --profile ingress up -d cloudflared
 
+up-socraticode: ## start Ollama + Qdrant for SocratiCode MCP (DECISION-6)
+	@docker volume create socraticode_ollama_data >/dev/null
+	@docker volume create socraticode_qdrant_data >/dev/null
+	$(COMPOSE) --profile socraticode up -d socraticode-ollama socraticode-qdrant
+
 down: ## stop everything (keeps volumes)
-	$(COMPOSE) --profile agents --profile ingress --profile onprem-llm down
+	$(COMPOSE) --profile agents --profile ingress --profile onprem-llm --profile socraticode down
 
 logs: ## tail gateway + adapter logs
 	$(COMPOSE) logs -f webhook-gateway queue-adapter

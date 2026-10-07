@@ -40,6 +40,19 @@ make outbox                         # adapter (DISPATCHER=dryrun) wrote one prom
 Ports (all bound to `127.0.0.1`): gateway 8700, redis 6379, postgres 5432,
 Hermes dashboard 9119, Hermes API 8642 (coordinator) / 8643 (dev-backend).
 
+## 3b. SocratiCode infra (Phase 2 / DECISION-6)
+
+```bash
+make up-socraticode                 # Ollama :11435 + Qdrant :16333/:16334 (loopback)
+curl -s localhost:11435/api/tags    # Ollama up
+curl -s localhost:16333/readyz      # Qdrant up
+```
+
+Volumes reuse `socraticode_ollama_data` / `socraticode_qdrant_data` if they already exist.
+In-compose URLs for the reviewer MCP: `http://socraticode-ollama:11434`,
+`http://socraticode-qdrant:6333`. Confidential LLM stays on profile `onprem-llm`
+(`inference-ollama`) — do not share model stores.
+
 ## 4. Hermes (single agent for Phase 0)
 
 ### Option A — host install (Ubuntu WSL2 / Linux)

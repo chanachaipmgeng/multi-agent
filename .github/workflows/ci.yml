@@ -77,7 +77,7 @@ jobs:
                    gitlab_token_readonly gitlab_token_frontend gitlab_token_backend gitlab_token_ci gitlab_token_qa; do
             echo ci-placeholder > "secrets/$f"
           done
-          docker compose --profile agents --profile ingress --profile onprem-llm config -q
+          docker compose --profile agents --profile ingress --profile onprem-llm --profile socraticode config -q
       - name: shellcheck
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck

@@ -30,7 +30,10 @@ skills:
   auto_load:
     - review-with-socraticode
 
-# SocratiCode MCP (DECISION-6) — enable in Phase 2 after license/key confirmed
+# SocratiCode MCP (DECISION-6) — enable in Phase 2 after license/key confirmed.
+# Infra: `make up-socraticode` → socraticode-ollama + socraticode-qdrant on workers net.
+# Host-side MCP: OLLAMA_URL=http://127.0.0.1:11435 QDRANT_URL=http://127.0.0.1:16333
+# In-compose (reviewer container): use service DNS below.
 mcp_servers:
   socraticode:
     # Disabled until DECISION-6 license holder + SECRET_SOCRATICODE_KEY are set
@@ -38,6 +41,8 @@ mcp_servers:
     # args: ["-y", "socraticode", "mcp"]
     # env:
     #   SOCRATICODE_API_KEY: ${SOCRATICODE_API_KEY}
+    #   OLLAMA_URL: http://socraticode-ollama:11434
+    #   QDRANT_URL: http://socraticode-qdrant:6333
 
 database:
   journal_mode: delete

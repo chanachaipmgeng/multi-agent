@@ -32,7 +32,7 @@ Everything is auditable · Grow in phases
 
 | Path | What |
 |---|---|
-| `docker-compose.yml` | dev stack: `redis`, `postgres`, `webhook-gateway`; profiles `agents` (6 Hermes containers), `ingress` (cloudflared), `onprem-llm` (Ollama) |
+| `docker-compose.yml` | dev stack: `redis`, `postgres`, `webhook-gateway`; profiles `agents` (6 Hermes), `ingress` (cloudflared), `onprem-llm` (confidential Ollama), `socraticode` (Ollama + Qdrant for SocratiCode) |
 | `webhook-gateway/` | FastAPI gateway — `X-Gitlab-Token` constant-time check, idempotency (`X-Gitlab-Event-UUID`), Task envelope, Redis Streams publisher, Postgres task store, `/metrics`; tests |
 | `queue-adapter/` | Redis Streams consumer → Hermes dispatcher (`dryrun` / `http` / `hermes_cli`), GitLab job-trace enrichment with secret redaction, retry via `XAUTOCLAIM`, dead-letter, task state + audit, Telegram notice; tests |
 | `db/migrations/` | Task Store schema: `tasks`, `handoffs`, `approvals`, `audit_events` (append-only), least-privilege roles |

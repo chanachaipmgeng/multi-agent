@@ -5,6 +5,7 @@
 #   agents      → 6 Hermes profiles as separate containers (coordinator + 5 workers)
 #   ingress     → cloudflared Named Tunnel connector (needs secrets/tunnel_token)
 #   onprem-llm  → Ollama for repos classified confidential/restricted (DECISION-3)
+#   socraticode → Ollama (embeddings) + Qdrant for SocratiCode MCP (DECISION-6 / Phase 2)
 #
 # Secrets are file-based (./secrets/*, created by `make secrets-decrypt` from .env.enc via SOPS).
 # No service publishes a port outside 127.0.0.1; external traffic arrives only via the tunnel.
@@ -280,6 +281,44 @@ services:
     profiles: ["onprem-llm"]
     restart: unless-stopped
 
+  # ------------------------------------------- SocratiCode infra (Phase 2)
+  # Separate from inference-ollama: embeddings/index stay on this pair so
+  # confidential LLM traffic (DECISION-3) never shares the same model store.
+  # Host ports are loopback-only for host-side `npx socraticode mcp`;
+  # in-compose clients use http://socraticode-ollama:11434 and
+  # http://socraticode-qdrant:6333 on the workers network.
+  socraticode-ollama:
+    image: ollama/ollama:latest
+    container_name: socraticode-ollama
+    volumes: ["socraticode-ollama-data:/root/.ollama"]
+    ports: ["127.0.0.1:${SOCRATICODE_OLLAMA_PORT:-11435}:11434"]
+    networks: [workers]
+    profiles: ["socraticode"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  socraticode-qdrant:
+    image: qdrant/qdrant:v1.17.0
+    container_name: socraticode-qdrant
+    volumes: ["socraticode-qdrant-data:/qdrant/storage"]
+    ports:
+      - "127.0.0.1:${SOCRATICODE_QDRANT_HTTP_PORT:-16333}:6333"
+      - "127.0.0.1:${SOCRATICODE_QDRANT_GRPC_PORT:-16334}:6334"
+    networks: [workers]
+    profiles: ["socraticode"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 secrets:
   gitlab_webhook_secret: { file: ./secrets/gitlab_webhook_secret }
   pg_password:           { file: ./secrets/pg_password }
@@ -310,6 +349,14 @@ volumes:
   pg-data: {}
   adapter-outbox: {}
   ollama-data: {}
+  # Stable external names — reuse standalone install data; `make up-socraticode`
+  # creates them if missing so a fresh pack still works.
+  socraticode-ollama-data:
+    external: true
+    name: socraticode_ollama_data
+  socraticode-qdrant-data:
+    external: true
+    name: socraticode_qdrant_data
   hermes-coordinator-data: {}
   hermes-dev-frontend-data: {}
   hermes-dev-backend-data: {}
