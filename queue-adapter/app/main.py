@@ -20,7 +20,15 @@ log = logging.getLogger("emaw.adapter")
 
 
 async def serve(settings: Settings) -> None:
-    redis = Redis.from_url(settings.redis_url, decode_responses=False)
+    # redis-py >= 8 defaults socket_timeout to 5s, which equals BLOCK_MS and makes every idle
+    # XREADGROUP raise TimeoutError. Give the socket more headroom than the blocking read.
+    redis = Redis.from_url(
+        settings.redis_url,
+        decode_responses=False,
+        socket_timeout=settings.block_ms / 1000 + 10,
+        socket_connect_timeout=5,
+        health_check_interval=30,
+    )
     store = build_store(settings.database_url)
     dispatcher = build_dispatcher(settings)
     gitlab = GitLabClient(
