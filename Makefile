@@ -3,7 +3,9 @@ SHELL := /bin/bash
 COMPOSE ?= docker compose
 PY      ?= python3
 GW      := webhook-gateway
+QA      := queue-adapter
 VENV    := $(GW)/.venv
+QVENV   := $(QA)/.venv
 
 .DEFAULT_GOAL := help
 
@@ -14,10 +16,13 @@ help: ## show this help
 prereqs: ## check host prerequisites (D0.1)
 	@scripts/check-prereqs.sh
 
-venv: ## create the gateway virtualenv with dev deps
+venv: ## create the gateway + adapter virtualenvs with dev deps
 	@test -d $(VENV) || (cd $(GW) && ($(PY) -m venv .venv || uv venv .venv))
 	@if command -v uv >/dev/null; then uv pip install --python $(VENV)/bin/python -q -e "$(GW)[dev]"; \
 	 else $(VENV)/bin/pip install -q -e "$(GW)[dev]"; fi
+	@test -d $(QVENV) || (cd $(QA) && ($(PY) -m venv .venv || uv venv .venv))
+	@if command -v uv >/dev/null; then uv pip install --python $(QVENV)/bin/python -q -e "$(QA)[dev]"; \
+	 else $(QVENV)/bin/pip install -q -e "$(QA)[dev]"; fi
 
 hooks: ## install pre-commit hooks (gitleaks, ruff)
 	@command -v pre-commit >/dev/null || pip install --user pre-commit
@@ -37,9 +42,9 @@ secrets-dev: ## dev shortcut: plaintext .env → ./secrets/* (no SOPS)
 	@scripts/secrets-decrypt.sh --from-plain-env
 
 # --------------------------------------------------------------- compose
-up: ## start redis + postgres + webhook-gateway
+up: ## start redis + postgres + webhook-gateway + queue-adapter
 	@test -s secrets/gitlab_webhook_secret || (echo "run 'make secrets-decrypt' (or secrets-dev) first"; exit 1)
-	$(COMPOSE) up -d --build redis postgres webhook-gateway
+	$(COMPOSE) up -d --build redis postgres webhook-gateway queue-adapter
 
 up-agents: ## also start the 6 Hermes profile containers
 	$(COMPOSE) --profile agents up -d
@@ -50,8 +55,24 @@ up-ingress: ## start the cloudflared tunnel connector (needs secrets/tunnel_toke
 down: ## stop everything (keeps volumes)
 	$(COMPOSE) --profile agents --profile ingress --profile onprem-llm down
 
-logs: ## tail gateway logs
-	$(COMPOSE) logs -f webhook-gateway
+logs: ## tail gateway + adapter logs
+	$(COMPOSE) logs -f webhook-gateway queue-adapter
+
+outbox: ## list prompts the adapter produced in dryrun mode
+	$(COMPOSE) exec queue-adapter sh -c 'ls -1t /var/lib/queue-adapter/outbox | head -20'
+
+# ---------------------------------------------------------------- phase 1
+tunnel-setup: ## create Named Tunnel + DNS + config (HOST=webhook.example.com [NAME=emaw] [SERVICE=1])
+	@scripts/tunnel-setup.sh "$(HOST)" "$(or $(NAME),emaw)" $(if $(SERVICE),--service,)
+
+tunnel-status: ## show cloudflared / gateway / public-path status (URL=https://webhook.example.com)
+	@scripts/tunnel-status.sh $(URL)
+
+gitlab-webhook: ## register/update the GitLab webhook (PROJECT=group/repo URL=https://webhook.example.com, needs GITLAB_ADMIN_TOKEN)
+	@scripts/gitlab-webhook-register.sh "$(PROJECT)" "$(URL)"
+
+gitlab-token-check: ## verify scopes/expiry of secrets/gitlab_token_*
+	@scripts/gitlab-token-check.sh
 
 ps: ## show service status
 	$(COMPOSE) --profile agents --profile ingress ps
@@ -73,14 +94,16 @@ onboard: ## onboard a repo: make onboard KEY=backend-api URL=git@... TEST="pytes
 	@scripts/onboard-project.sh "$(KEY)" "$(URL)" "$(TEST)"
 
 # ------------------------------------------------------------------ tests
-test: venv ## gateway unit tests (fakeredis + in-memory store)
+test: venv ## gateway + adapter unit tests (fakeredis + in-memory stores)
 	cd $(GW) && .venv/bin/pytest -q
+	cd $(QA) && .venv/bin/pytest -q
 
 test-integration: venv ## gateway integration tests against TEST_DATABASE_URL
 	cd $(GW) && .venv/bin/pytest -q -m integration
 
-lint: venv ## ruff lint + format check
+lint: venv ## ruff lint + format check (gateway + adapter)
 	cd $(GW) && .venv/bin/ruff check . && .venv/bin/ruff format --check .
+	cd $(QA) && .venv/bin/ruff check . && .venv/bin/ruff format --check .
 
 gitleaks: ## scan the repo for secrets
 	gitleaks detect --no-banner --redact --config .gitleaks.toml --source .
@@ -91,4 +114,4 @@ webhook-test: ## send a sample Issue Hook to the running gateway (KIND=issue|pip
 verify-phase0: ## run the Phase 0 exit-criteria self-check
 	@scripts/verify-phase0.sh
 
-.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents up-ingress down logs ps migrate hermes-configure skills-sync skills-check onboard test test-integration lint gitleaks webhook-test verify-phase0
+.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents up-ingress down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration lint gitleaks webhook-test verify-phase0

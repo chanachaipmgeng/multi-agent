@@ -36,6 +36,8 @@ description = "Templates and test fixtures that intentionally contain placeholde
 paths = [
   '''\.env\.example$''',
   '''webhook-gateway/tests/fixtures/.*\.json$''',
+  '''queue-adapter/tests/(conftest|test_redaction)\.py$''',   # synthetic token shapes for redaction tests
+  '''__pycache__/''',
   '''\.sops\.yaml$''',
   '''docs/.*\.md$''',
 ]

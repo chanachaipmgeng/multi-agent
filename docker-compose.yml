@@ -1,6 +1,6 @@
 # Enterprise Multi-Agent Workspace — dev compose (Phase 0 foundation, grows into §A.1)
 #
-# Default services (plain `docker compose up -d`):  redis, postgres, webhook-gateway
+# Default services (plain `docker compose up -d`):  redis, postgres, webhook-gateway, queue-adapter
 # Profiles:
 #   agents      → 6 Hermes profiles as separate containers (coordinator + 5 workers)
 #   ingress     → cloudflared Named Tunnel connector (needs secrets/tunnel_token)
@@ -95,6 +95,36 @@ services:
       interval: 30s
       timeout: 3s
       retries: 3
+    restart: unless-stopped
+
+  queue-adapter:
+    # Phase 1–2: single adapter feeding the one Hermes agent. Phase 3: one per role (stream:<role>).
+    build: ./queue-adapter
+    image: emaw/queue-adapter:dev
+    environment:
+      - LOG_LEVEL=${ADAPTER_LOG_LEVEL:-info}
+      - REDIS_URL=redis://redis:6379/0
+      - TASK_STREAM=stream:tasks
+      - CONSUMER_GROUP=hermes-single
+      - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
+      - PG_PASSWORD_FILE=/run/secrets/pg_password
+      - DISPATCHER=${ADAPTER_DISPATCHER:-dryrun}          # dryrun | http | hermes_cli
+      - HERMES_HTTP_URL=${HERMES_HTTP_URL:-}              # e.g. http://coordinator:8642/webhook/task
+      - OUTBOX_DIR=/var/lib/queue-adapter/outbox
+      - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
+      - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+    secrets: [pg_password, gitlab_token_readonly, telegram_token]
+    volumes: ["adapter-outbox:/var/lib/queue-adapter"]
+    networks: [control, workers]
+    depends_on:
+      redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 
   cloudflared:
@@ -225,4 +255,5 @@ networks:
 volumes:
   redis-data: {}
   pg-data: {}
+  adapter-outbox: {}
   ollama-data: {}
