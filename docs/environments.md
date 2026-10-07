@@ -14,6 +14,17 @@
 | MinIO | local compose + SigV4 via root password | local or external | compose MinIO + offsite restic (Phase 4) |
 | Verified | API Flow A + E11 pause/RBAC (see `phase3-exit-criteria.md`) | — | — |
 
+## Observability (D4.1)
+
+```bash
+make up-observability
+# Grafana http://127.0.0.1:3000 · Prometheus :9090 · Alertmanager :9093
+```
+
+Compose profile `observability`: Loki, Tempo, OTel Collector, Promtail (docker log redaction),
+Prometheus, Alertmanager (Telegram when `TELEGRAM_CHAT_ID` set), Grafana (4 EMAW dashboards).
+See `docs/runbooks/alerts.md`.
+
 ## Supply chain (D4.6 / E12)
 
 * Base images and compose services are **digest-pinned** (`python:3.12-slim@sha256:…`,

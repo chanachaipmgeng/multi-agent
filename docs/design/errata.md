@@ -16,3 +16,5 @@ Canonical design text: [`system-design-v1.1.md`](system-design-v1.1.md) (copied 
 | Claim idle (§10.3) | `CLAIM_MIN_IDLE` = 10 minutes for all | Workers keep **10 min**; **router** uses `CLAIM_MIN_IDLE_MS=30000` so pause-deferred PEL resumes quickly |
 | Dashboard `:9119` | Bind + Cloudflare Access (Phase 4) | Hermes 0.21 refuses `0.0.0.0` without auth — **DECISION-18** basic auth via `HERMES_DASHBOARD_BASIC_AUTH_*` from `secrets/dashboard_password` |
 | Image pins (E12) | Digest-pin base + service images | Dockerfiles + compose `${*_IMAGE:-…@sha256:…}`; `scripts/pin-digests.sh`; CI Trivy job |
+| Observability logs | OTel Collector only | Promtail scrapes docker logs (redacted) → Loki; OTel Collector handles OTLP → Tempo + transform redaction |
+| Gitleaks in sandbox | pre-commit in every worktree | Linux `tools/gitleaks` mounted into Hermes; template `.pre-commit-config.yaml` via onboard |

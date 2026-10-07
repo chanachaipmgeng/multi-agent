@@ -6,7 +6,7 @@ Incident Response: มนุษย์สั่งงานผ่าน Telegram,
 Webhook Gateway, Coordinator มอบหมายงานให้ worker agents ที่ทำงานใน Docker sandbox และทุก action ที่มี
 ผลกระทบสูงต้องผ่าน Human-in-the-Loop
 
-สถานะ: **Phase 3 closed** (dashboard auth + §8.2 metrics) · **Phase 4 started** (D4.5 backup/restore · D4.6 digest pins + Trivy) · org-blocked: DECISION-2/5/8/11
+สถานะ: **Phase 3 closed** · **Phase 4** D4.1 observability + D4.2 redaction/gitleaks + D4.5/D4.6 ✅ · org-blocked: DECISION-2/5/8/11
 Hermes Agent **v0.21.5** · decisions: [`docs/decisions.md`](docs/decisions.md) · design: [`docs/design/system-design-v1.1.md`](docs/design/system-design-v1.1.md) ([errata](docs/design/errata.md))
 Exit criteria: [`phase0`](docs/phase0-exit-criteria.md) · [`phase1`](docs/phase1-exit-criteria.md) · [`phase2`](docs/phase2-exit-criteria.md) · [`phase3`](docs/phase3-exit-criteria.md) · [`phase4`](docs/phase4-exit-criteria.md)
 
@@ -113,6 +113,8 @@ Task envelope (design §4.3): `task_id`, `trace_id`, `type`, `project`, `source`
 | Metrics §8.2 | adapter gauges/histograms · gateway `approval_latency_seconds` |
 | Backup / restore (D4.5) | `make backup` · `make restore-drill BACKUP=…` · `docs/runbooks/restore.md` |
 | Supply chain (D4.6) | digest-pinned images · `scripts/pin-digests.sh` · CI Trivy |
+| Observability (D4.1) | `make up-observability` · Grafana :3000 · 4 dashboards · Alertmanager → Telegram |
+| Redaction + sandbox gitleaks (D4.2) | adapter notify/audit · Promtail/OTel · `tools/gitleaks` mount |
 | GitLab webhooks via Cloudflare Named Tunnel | `cloudflared/`, compose `ingress` profile, single path `/webhook/gitlab` |
 | SocratiCode MCP (local AGPL) | `hermes-data/reviewer/config.yaml#mcp_servers` + `make up-socraticode` / `make up-local-free` |
 | No auto-push for 2 months; approver ≠ developer; never push `main` | `projects.yaml#auto_push_branches: []`, `platform-policy.yaml`, `rbac.example.yaml`, every `AGENT.md` |
