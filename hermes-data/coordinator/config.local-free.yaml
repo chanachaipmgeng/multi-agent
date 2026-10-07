@@ -45,6 +45,11 @@ skills:
 database:
   journal_mode: delete
 
+# Dashboard (:9119) — DECISION-18; password from HERMES_DASHBOARD_BASIC_AUTH_* in .env
+dashboard:
+  basic_auth:
+    username: emaw
+
 emaw:
   agent_md: /opt/data/AGENT.md
   platform_policy: /config/policies/platform-policy.yaml

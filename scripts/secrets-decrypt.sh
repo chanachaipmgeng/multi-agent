@@ -43,12 +43,14 @@ done <<< "$SOURCE"
 for name in gitlab_webhook_secret pg_password tunnel_token telegram_token socraticode_key \
             llm_key_coordinator llm_key_dev_frontend llm_key_dev_backend llm_key_reviewer llm_key_devops llm_key_qa \
             gitlab_token_readonly gitlab_token_frontend gitlab_token_backend gitlab_token_ci gitlab_token_qa \
-            hermes_api_key minio_agent_secret minio_root_password; do
+            hermes_api_key minio_agent_secret minio_root_password \
+            dashboard_password dashboard_session_secret; do
   [ -f "secrets/$name" ] || { : > "secrets/$name"; chmod 600 "secrets/$name"; }
 done
 # Sensible local defaults when still empty (dev only)
 [ -s secrets/minio_agent_secret ] || { printf '%s' 'emaw-minio-agent-dev' > secrets/minio_agent_secret; chmod 600 secrets/minio_agent_secret; }
 [ -s secrets/minio_root_password ] || { printf '%s' 'emaw-minio-dev-change-me' > secrets/minio_root_password; chmod 600 secrets/minio_root_password; }
+[ -s secrets/dashboard_password ] || { printf '%s' 'emaw-dashboard-dev' > secrets/dashboard_password; chmod 600 secrets/dashboard_password; }
 
 echo "wrote $count secret files into ./secrets/ (gitignored)"
 [ -s secrets/gitlab_webhook_secret ] || echo "warning: secrets/gitlab_webhook_secret is empty — the gateway will refuse to start"

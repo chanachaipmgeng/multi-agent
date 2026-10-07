@@ -206,3 +206,15 @@ async def test_safe_mode_sets_require_approval(router, fake_redis) -> None:
         else (entries[0][1].get(b"envelope") or entries[0][1]["envelope"])
     )
     assert env["constraints"]["require_approval"] is True
+
+
+async def test_refresh_gauges_sets_queue_depth(router, fake_redis, store) -> None:
+    from app import metrics as metrics_mod
+
+    metrics_mod.reset_for_tests()
+    await fake_redis.xadd("stream:tasks", {"task_id": "t-g"})
+    store.states["t-g"] = {"state": "QUEUED"}
+    await router.refresh_gauges()
+    body = metrics_mod.render().decode()
+    assert 'queue_depth{stream="stream:tasks"}' in body
+    assert 'task_state_total{state="QUEUED"}' in body

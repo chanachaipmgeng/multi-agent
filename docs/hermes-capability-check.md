@@ -29,7 +29,7 @@ image: nousresearch/hermes-agent@sha256:d4da4a40cd7a28aba983775d9fd31d94cbf153ee
 |---|---|---|
 | **8642** | OpenAI-compatible API server (`/v1/chat/completions`, `/v1/runs`, `/v1/runs/{id}/events`, `/v1/runs/{id}/approval`) | `API_SERVER_ENABLED=true`, `API_SERVER_KEY=…`, `API_SERVER_HOST=0.0.0.0` (container) / `127.0.0.1` (host) |
 | **8644** | Hermes-native webhook adapter (`POST /webhooks/<route>`) | `WEBHOOK_ENABLED=true` — **not used by EMAW** (we keep our FastAPI gateway, DECISION-12) |
-| **9119** | Dashboard | `HERMES_DASHBOARD=1` |
+| **9119** | Dashboard (basic auth — DECISION-18) | `HERMES_DASHBOARD=1` + `HERMES_DASHBOARD_BASIC_AUTH_*` in `/opt/data/.env` |
 
 ## Non-interactive invocation (queue-adapter)
 

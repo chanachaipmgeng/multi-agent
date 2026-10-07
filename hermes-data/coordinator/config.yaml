@@ -47,6 +47,13 @@ database:
   # Named volume preferred; delete is safe on Windows bind-mounts (WAL + drvfs).
   journal_mode: delete
 
+# Dashboard (:9119) — DECISION-18. Credentials come from HERMES_DASHBOARD_BASIC_AUTH_*
+# in /opt/data/.env (scripts/hermes-seed-env.sh). Username here is documentation-only;
+# env wins when set. Without auth Hermes 0.21 refuses to bind 0.0.0.0.
+dashboard:
+  basic_auth:
+    username: emaw
+
 # EMAW platform paths (read by skills / SOUL.md, not native Hermes keys)
 emaw:
   agent_md: /opt/data/AGENT.md

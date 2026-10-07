@@ -301,6 +301,18 @@ async def decide_approval(
     await store.decide_approval(nonce, decision=body.decision, decided_by=user_id)
     new_state = "APPROVED" if body.decision == "approved" else "CANCELLED"
     await store.set_state(row["task_id"], new_state)
+    requested_at = row.get("requested_at")
+    if requested_at is not None:
+        try:
+            from .metrics import approval_latency_seconds
+
+            if getattr(requested_at, "tzinfo", None) is None:
+                requested_at = requested_at.replace(tzinfo=UTC)
+            approval_latency_seconds.observe(
+                max(0.0, (datetime.now(UTC) - requested_at).total_seconds())
+            )
+        except Exception:  # noqa: BLE001
+            pass
     await store.audit(
         actor=f"human:{user_id}",
         event=f"approval.{body.decision}",

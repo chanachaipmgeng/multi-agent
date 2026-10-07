@@ -39,6 +39,10 @@ disk; the file-based variant is used because Hermes reads `token_file:` paths.
 | `gitlab_token_readonly` | coordinator, reviewer | Project Access Token `read_api` | 90 days |
 | `gitlab_token_frontend` / `_backend` / `_ci` / `_qa` | that worker only | PAT `read_api` + `write_repository`, one repo | 90 days |
 | `socraticode_key` | reviewer | SocratiCode | 90 days |
+| `hermes_api_key` | adapters, gateway internal, Hermes API | Bearer | 90 days |
+| `dashboard_password` | coordinator dashboard `:9119` | basic auth (DECISION-18) | 90 days |
+| `dashboard_session_secret` | coordinator dashboard sessions | HMAC (optional; falls back to `hermes_api_key`) | 90 days |
+| `minio_*` | MinIO | root / agent | 180 days |
 
 Rotation runbook (first version, Phase 1 will extend it): edit `.env` → `make secrets-encrypt`
 → `make secrets-decrypt` → `docker compose up -d <service>` for the consumer(s) only → revoke the

@@ -190,3 +190,33 @@ async def test_approval_flow(client) -> None:
     )
     assert decide.status_code == 200
     assert decide.json()["status"] == "approved"
+
+    from prometheus_client import generate_latest
+
+    from app.metrics import registry
+
+    scraped = generate_latest(registry).decode()
+    assert "approval_latency_seconds_count" in scraped
+    assert "approval_latency_seconds_sum" in scraped
+
+
+async def test_metrics_task_state_gauge(client) -> None:
+    ac, store, _redis = client
+    task = Task(
+        task_id="t-metrics-1",
+        trace_id="abc",
+        type="feature",
+        project="frontend-app",
+        source=TaskSource(kind="telegram"),
+        requester=TaskRequester(channel="telegram", user_id=1),
+        assigned_to="dev-frontend",
+        skill="dev-flow",
+        constraints=TaskConstraints(token_budget=1, self_heal_limit=0, deadline_min=1),
+        state=TaskState.QUEUED,
+        created_at=datetime.now(UTC),
+    )
+    await store.create_task(task)
+    r = await ac.get("/metrics")
+    assert r.status_code == 200
+    body = r.text
+    assert 'task_state_total{state="QUEUED"}' in body

@@ -54,6 +54,7 @@ class TaskStore(Protocol):
         task_id: str | None,
         attrs: dict[str, Any] | None = None,
     ) -> None: ...
+    async def count_by_state(self) -> dict[str, int]: ...
 
 
 # --------------------------------------------------------------------- no-op
@@ -94,6 +95,9 @@ class NullTaskStore:
 
     async def audit(self, **_: Any) -> None:
         return None
+
+    async def count_by_state(self) -> dict[str, int]:
+        return {}
 
 
 # ------------------------------------------------------------------- memory
@@ -186,6 +190,7 @@ class MemoryTaskStore:
             "requested_by": requested_by,
             "required_role": required_role,
             "timeout_at": timeout_at,
+            "requested_at": datetime.now(UTC),
             "decision": None,
             "decided_by": None,
         }
@@ -219,6 +224,13 @@ class MemoryTaskStore:
                 "attrs": attrs or {},
             }
         )
+
+    async def count_by_state(self) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for t in self.tasks.values():
+            st = t.state.value if isinstance(t.state, TaskState) else str(t.state)
+            out[st] = out.get(st, 0) + 1
+        return out
 
 
 # ----------------------------------------------------------------- postgres
@@ -372,16 +384,13 @@ class PostgresTaskStore:
         async with self._pool.acquire() as conn:
             row = await conn.fetchrow(
                 "SELECT task_id, action, payload_hash, nonce, requested_by, required_role, "
-                "timeout_at, decision, decided_by, decided_at FROM approvals WHERE nonce = $1",
+                "timeout_at, decision, decided_by, decided_at, requested_at "
+                "FROM approvals WHERE nonce = $1",
                 nonce,
             )
         if row is None:
             return None
-        data = dict(row)
-        for k in ("timeout_at", "decided_at"):
-            if data.get(k) is not None:
-                data[k] = data[k]
-        return data
+        return dict(row)
 
     async def decide_approval(self, nonce: str, *, decision: str, decided_by: int) -> None:
         assert self._pool is not None, "store not connected"
@@ -419,6 +428,14 @@ class PostgresTaskStore:
                 event,
                 json.dumps(attrs or {}, default=str),
             )
+
+    async def count_by_state(self) -> dict[str, int]:
+        assert self._pool is not None, "store not connected"
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT state, count(*)::int AS n FROM tasks GROUP BY state"
+            )
+        return {str(r["state"]): int(r["n"]) for r in rows}
 
 
 def build_store(database_url: str | None) -> TaskStore:

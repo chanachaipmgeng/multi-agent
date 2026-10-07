@@ -43,6 +43,25 @@ write_env coordinator \
   OPENROUTER_API_KEY=llm_key_coordinator \
   GITLAB_TOKEN=gitlab_token_readonly
 
+# Dashboard basic auth (DECISION-18 / Hermes 0.21.5 HERMES_DASHBOARD_BASIC_AUTH_*).
+# Env wins over config.yaml; plaintext password is hashed in-memory by Hermes.
+_coord="hermes-data/coordinator/.env"
+_dash_pw="$(secret dashboard_password)"
+_dash_secret="$(secret dashboard_session_secret)"
+[ -z "$_dash_secret" ] && _dash_secret="$(secret hermes_api_key)"
+if [ -n "$_dash_pw" ]; then
+  for k in HERMES_DASHBOARD_BASIC_AUTH_USERNAME HERMES_DASHBOARD_BASIC_AUTH_PASSWORD \
+           HERMES_DASHBOARD_BASIC_AUTH_SECRET; do
+    grep -q "^${k}=" "$_coord" 2>/dev/null && sed -i.bak "/^${k}=/d" "$_coord" && rm -f "${_coord}.bak"
+  done
+  printf 'HERMES_DASHBOARD_BASIC_AUTH_USERNAME=%s\n' "${DASHBOARD_USERNAME:-emaw}" >> "$_coord"
+  printf 'HERMES_DASHBOARD_BASIC_AUTH_PASSWORD=%s\n' "$_dash_pw" >> "$_coord"
+  if [ -n "$_dash_secret" ]; then
+    printf 'HERMES_DASHBOARD_BASIC_AUTH_SECRET=%s\n' "$_dash_secret" >> "$_coord"
+  fi
+  echo "coordinator dashboard basic auth seeded (user=${DASHBOARD_USERNAME:-emaw})"
+fi
+
 write_env dev-frontend \
   OPENROUTER_API_KEY=llm_key_dev_frontend \
   GITLAB_TOKEN=gitlab_token_frontend

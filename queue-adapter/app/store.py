@@ -43,6 +43,7 @@ class StateStore(Protocol):
         task_id: str | None,
         attrs: dict[str, Any] | None = None,
     ) -> None: ...
+    async def count_by_state(self) -> dict[str, int]: ...
 
 
 class NullStateStore:
@@ -63,6 +64,9 @@ class NullStateStore:
 
     async def audit(self, **_: Any) -> None:
         return None
+
+    async def count_by_state(self) -> dict[str, int]:
+        return {}
 
 
 @dataclass
@@ -132,6 +136,13 @@ class MemoryStateStore:
                 "attrs": attrs or {},
             }
         )
+
+    async def count_by_state(self) -> dict[str, int]:
+        out: dict[str, int] = {}
+        for row in self.states.values():
+            state = str(row.get("state") or "UNKNOWN")
+            out[state] = out.get(state, 0) + 1
+        return out
 
 
 class PostgresStateStore:
@@ -225,6 +236,14 @@ class PostgresStateStore:
                 event,
                 json.dumps(attrs or {}, default=str),
             )
+
+    async def count_by_state(self) -> dict[str, int]:
+        assert self._pool is not None
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                "SELECT state, count(*)::int AS n FROM tasks GROUP BY state"
+            )
+        return {str(r["state"]): int(r["n"]) for r in rows}
 
 
 def build_store(database_url: str | None) -> StateStore:

@@ -34,6 +34,7 @@ from .idempotency import IdempotencyStore
 from .internal import router as internal_router
 from .metrics import (
     registry,
+    task_state_total,
     tasks_enqueued_total,
     webhook_auth_fail_total,
     webhook_processing_seconds,
@@ -125,7 +126,26 @@ def create_app(
         )
 
     @app.get("/metrics")
-    async def metrics() -> Response:
+    async def metrics(request: Request) -> Response:
+        try:
+            counts = await request.app.state.store.count_by_state()
+            # Clear previous label sets by setting known states; Prometheus Gauge
+            # keeps last labels — zero out common ones then set live counts.
+            for st in (
+                "QUEUED",
+                "ASSIGNED",
+                "IN_PROGRESS",
+                "REVIEW",
+                "DONE",
+                "FAILED",
+                "AWAITING_APPROVAL",
+                "NEEDS_HUMAN",
+            ):
+                task_state_total.labels(state=st).set(0)
+            for st, n in counts.items():
+                task_state_total.labels(state=st).set(n)
+        except Exception:  # noqa: BLE001
+            log.debug("task_state_total scrape failed", exc_info=True)
         return Response(generate_latest(registry), media_type=CONTENT_TYPE_LATEST)
 
     # --------------------------------------------------------------- webhook

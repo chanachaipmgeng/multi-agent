@@ -237,8 +237,14 @@ class Consumer:
             metrics.inc("emaw_tasks_dispatched_total")
             if result.elapsed_seconds:
                 metrics.observe_run_seconds(result.elapsed_seconds)
+                metrics.observe_task_duration(
+                    result.elapsed_seconds,
+                    task_type=str(task.get("type") or "unknown"),
+                    agent=self.agent_name,
+                )
             if tokens:
                 metrics.observe_tokens(tokens)
+                metrics.observe_llm_tokens(tokens, agent=self.agent_name)
 
             await self.redis.xadd(
                 self.s.results_stream,

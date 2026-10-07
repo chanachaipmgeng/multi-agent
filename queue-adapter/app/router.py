@@ -50,6 +50,8 @@ class Router:
         self.registry = registry
         self.processed = 0
         self.results_group = "router-results"
+        self._last_metrics_at = 0.0
+        self._metrics_interval_seconds = 15.0
 
     async def ensure_groups(self) -> None:
         for stream, group in (
@@ -76,7 +78,61 @@ class Router:
         handled += await self._read_tasks(start_id=">")
         handled += await self._read_results(block_ms=block_ms)
         await self.heartbeat()
+        now = time.time()
+        if now - self._last_metrics_at >= self._metrics_interval_seconds:
+            await self.refresh_gauges()
+            self._last_metrics_at = now
         return handled
+
+    async def refresh_gauges(self) -> None:
+        """Publish §8.2 queue / heartbeat / task-state gauges (best-effort)."""
+        streams = [
+            self.s.task_stream,
+            self.s.results_stream,
+            self.s.dead_letter_stream,
+        ]
+        for role in ("dev-frontend", "dev-backend", "reviewer", "qa", "devops"):
+            streams.append(self.s.role_stream(role))
+        now_ms = int(time.time() * 1000)
+        for stream in streams:
+            try:
+                depth = int(await self.redis.xlen(stream))
+            except Exception:  # noqa: BLE001
+                depth = 0
+            metrics.set_gauge("queue_depth", float(depth), {"stream": stream})
+            age = 0.0
+            if depth > 0:
+                try:
+                    first = await self.redis.xrange(stream, count=1)
+                    if first:
+                        mid = _s(first[0][0])
+                        ts_ms = int(mid.split("-", 1)[0])
+                        age = max(0.0, (now_ms - ts_ms) / 1000.0)
+                except Exception:  # noqa: BLE001
+                    age = 0.0
+            metrics.set_gauge("queue_oldest_age_seconds", age, {"stream": stream})
+
+        try:
+            async for key in self.redis.scan_iter(match="emaw:heartbeat:*", count=50):
+                k = _s(key)
+                agent = k.rsplit(":", 1)[-1]
+                raw = await self.redis.get(key)
+                if raw is None:
+                    continue
+                try:
+                    ts = float(_s(raw))
+                except ValueError:
+                    continue
+                metrics.set_gauge("agent_heartbeat_timestamp", ts, {"agent": agent})
+        except Exception:  # noqa: BLE001
+            log.debug("heartbeat gauge scan failed", exc_info=True)
+
+        try:
+            counts = await self.store.count_by_state()
+            for state, n in counts.items():
+                metrics.set_gauge("task_state_total", float(n), {"state": state})
+        except Exception:  # noqa: BLE001
+            log.debug("task_state_total gauge failed", exc_info=True)
 
     async def _claim_stale_tasks(self) -> int:
         _next, messages, _deleted = await self.redis.xautoclaim(

@@ -1,4 +1,4 @@
-"""Prometheus metrics HTTP server for adapters (design §8, Phase 3 prep for Phase 4)."""
+"""Prometheus metrics HTTP server for adapters (design §8.2)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,9 @@ from typing import Any
 
 log = logging.getLogger("emaw.adapter.metrics")
 
-# Simple in-process counters (no prometheus_client dependency — keep adapter light).
+DURATION_BUCKETS = (30.0, 60.0, 120.0, 300.0, 600.0, 900.0, 1800.0, 3600.0)
+
+# Simple in-process counters/gauges/histograms (no prometheus_client — keep adapter light).
 _counters: dict[str, float] = {
     "emaw_tasks_dispatched_total": 0.0,
     "emaw_tasks_failed_total": 0.0,
@@ -18,6 +20,11 @@ _counters: dict[str, float] = {
     "emaw_tokens_total": 0.0,
 }
 _labels: dict[str, str] = {}
+# gauge name → {label_tuple_str → value}
+_gauges: dict[str, dict[str, float]] = {}
+# histogram name → {label_tuple_str → {"buckets": [...counts], "sum": f, "count": f}}
+_histograms: dict[str, dict[str, dict[str, Any]]] = {}
+_hist_buckets: dict[str, tuple[float, ...]] = {}
 _lock = threading.Lock()
 
 
@@ -39,9 +46,60 @@ def observe_tokens(tokens: int) -> None:
     inc("emaw_tokens_total", float(tokens))
 
 
+def _label_key(labels: dict[str, str] | None) -> str:
+    if not labels:
+        return ""
+    return ",".join(f'{k}="{v}"' for k, v in sorted(labels.items()))
+
+
+def set_gauge(name: str, value: float, labels: dict[str, str] | None = None) -> None:
+    key = _label_key(labels)
+    with _lock:
+        _gauges.setdefault(name, {})[key] = float(value)
+
+
+def observe_histogram(
+    name: str,
+    value: float,
+    *,
+    buckets: tuple[float, ...] = DURATION_BUCKETS,
+    labels: dict[str, str] | None = None,
+) -> None:
+    key = _label_key(labels)
+    with _lock:
+        _hist_buckets[name] = buckets
+        series = _histograms.setdefault(name, {}).setdefault(
+            key,
+            {"buckets": [0.0] * len(buckets), "sum": 0.0, "count": 0.0, "+Inf": 0.0},
+        )
+        series["sum"] += float(value)
+        series["count"] += 1.0
+        for i, edge in enumerate(buckets):
+            if value <= edge:
+                series["buckets"][i] += 1.0
+        series["+Inf"] += 1.0
+
+
+def observe_task_duration(seconds: float, *, task_type: str, agent: str) -> None:
+    observe_histogram(
+        "task_duration_seconds",
+        seconds,
+        buckets=DURATION_BUCKETS,
+        labels={"type": task_type or "unknown", "agent": agent or "unknown"},
+    )
+
+
+def observe_llm_tokens(tokens: int, *, agent: str) -> None:
+    # Cumulative counter with agent label (separate from unlabeled emaw_tokens_total).
+    name = "llm_tokens_total"
+    key = _label_key({"agent": agent or "unknown"})
+    with _lock:
+        _counters[f"{name}|{key}"] = _counters.get(f"{name}|{key}", 0.0) + float(tokens)
+
+
 def render() -> bytes:
     with _lock:
-        lines = [
+        lines: list[str] = [
             "# HELP emaw_tasks_dispatched_total Tasks successfully dispatched to Hermes",
             "# TYPE emaw_tasks_dispatched_total counter",
             f"emaw_tasks_dispatched_total{_fmt_labels()} {_counters['emaw_tasks_dispatched_total']}",
@@ -57,8 +115,55 @@ def render() -> bytes:
             "# HELP emaw_tokens_total Cumulative tokens reported by Hermes runs",
             "# TYPE emaw_tokens_total counter",
             f"emaw_tokens_total{_fmt_labels()} {_counters['emaw_tokens_total']}",
-            "",
         ]
+
+        # llm_tokens_total{agent}
+        token_keys = [k for k in _counters if k.startswith("llm_tokens_total|")]
+        if token_keys:
+            lines.append("# HELP llm_tokens_total Cumulative LLM tokens by agent")
+            lines.append("# TYPE llm_tokens_total counter")
+            for k in sorted(token_keys):
+                label = k.split("|", 1)[1]
+                lbl = f"{{{label}}}" if label else ""
+                lines.append(f"llm_tokens_total{lbl} {_counters[k]}")
+
+        for name, series_map in sorted(_gauges.items()):
+            help_txt = {
+                "queue_depth": "Redis stream length",
+                "queue_oldest_age_seconds": "Age of oldest pending stream entry",
+                "agent_heartbeat_timestamp": "Unix timestamp of last agent/adapter heartbeat",
+                "task_state_total": "Tasks currently in each state",
+            }.get(name, name)
+            lines.append(f"# HELP {name} {help_txt}")
+            lines.append(f"# TYPE {name} gauge")
+            for label, value in sorted(series_map.items()):
+                lbl = f"{{{label}}}" if label else ""
+                lines.append(f"{name}{lbl} {value}")
+
+        for name, series_map in sorted(_histograms.items()):
+            buckets = _hist_buckets.get(name, DURATION_BUCKETS)
+            lines.append(f"# HELP {name} {name}")
+            lines.append(f"# TYPE {name} histogram")
+            for label, series in sorted(series_map.items()):
+                cumulative = 0.0
+                for i, edge in enumerate(buckets):
+                    cumulative += series["buckets"][i]
+                    if label:
+                        le = "{" + label + f',le="{edge}"}}'
+                    else:
+                        le = f'{{le="{edge}"}}'
+                    lines.append(f"{name}_bucket{le} {cumulative}")
+                if label:
+                    inf = "{" + label + ',le="+Inf"}'
+                    sum_lbl = "{" + label + "}"
+                else:
+                    inf = '{le="+Inf"}'
+                    sum_lbl = ""
+                lines.append(f"{name}_bucket{inf} {series['+Inf']}")
+                lines.append(f"{name}_sum{sum_lbl} {series['sum']}")
+                lines.append(f"{name}_count{sum_lbl} {series['count']}")
+
+        lines.append("")
     return "\n".join(lines).encode("utf-8")
 
 
@@ -67,6 +172,20 @@ def _fmt_labels() -> str:
         return ""
     parts = ",".join(f'{k}="{v}"' for k, v in sorted(_labels.items()))
     return "{" + parts + "}"
+
+
+def reset_for_tests() -> None:
+    """Clear all series (unit tests only)."""
+    with _lock:
+        for k in list(_counters):
+            if k.startswith("llm_tokens_total|"):
+                del _counters[k]
+            else:
+                _counters[k] = 0.0
+        _gauges.clear()
+        _histograms.clear()
+        _hist_buckets.clear()
+        _labels.clear()
 
 
 class _Handler(BaseHTTPRequestHandler):
