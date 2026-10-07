@@ -12,8 +12,8 @@ Layout: `skills/<agent>/<skill>.md`, plus `skills/_dev-common/` (shared by `dev-
 | `dev-flow` | dev-frontend, dev-backend | **0** | implemented (`_dev-common/dev-flow.md`) |
 | `review-code` | dev-frontend, dev-backend | **0** | implemented (`_dev-common/review-code.md`) |
 | `human-approval-gate` | coordinator | **0** | implemented (`coordinator/human-approval-gate.md`) |
-| `resolve-issue` | dev-* | 1 | placeholder |
-| `incident-triage` | devops | 1 | placeholder |
+| `resolve-issue` | dev-frontend, dev-backend | **1** | implemented (`_dev-common/resolve-issue.md`) |
+| `incident-triage` | devops | **1** | implemented (`devops/incident-triage.md`) |
 | `switch-context` | coordinator (single agent in 1–2) | 2 | placeholder |
 | `review-with-socraticode`, `deep-review` | reviewer | 2 | placeholder |
 | `fix-pipeline`, `deploy-prod` | devops | 3 | placeholder |
