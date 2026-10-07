@@ -31,9 +31,20 @@ EOF
   exit 0
 fi
 
-# Fallback: create bucket with a simple authenticated PUT (path-style)
-# MinIO accepts AWS Signature V2-ish via mc preferentially; without mc we only
-# verify health and remind the operator.
-echo "mc not installed — bucket will be auto-created on first PUT from adapters"
-echo "optional: install minio client and re-run scripts/minio-init.sh"
+# Fallback: ephemeral minio/mc on the compose network (no host mc needed).
+# MSYS_NO_PATHCONV avoids Git-Bash rewriting /bin paths when invoking docker.
+if docker inspect emaw-minio >/dev/null 2>&1; then
+  NET="$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}' emaw-minio | head -1)"
+  if [ -n "$NET" ]; then
+    MC_URL="http://${ROOT_USER}:${ROOT_PASS}@minio:9000"
+    if MSYS_NO_PATHCONV=1 docker run --rm --network "$NET" \
+        -e "MC_HOST_emaw=${MC_URL}" \
+        minio/mc:latest mb --ignore-existing "emaw/${BUCKET}" >/dev/null; then
+      echo "minio bucket $BUCKET ready (via docker minio/mc)"
+      exit 0
+    fi
+  fi
+fi
+
+echo "mc not installed and docker mc fallback failed — bucket may auto-create on first PUT"
 exit 0

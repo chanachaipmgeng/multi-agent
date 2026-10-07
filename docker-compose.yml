@@ -41,7 +41,7 @@ x-hermes-common: &hermes-common
 x-adapter-common: &adapter-common
   build: ./queue-adapter
   image: emaw/queue-adapter:dev
-  secrets: [pg_password, gitlab_token_readonly, telegram_token, hermes_api_key, minio_agent_secret]
+  secrets: [pg_password, gitlab_token_readonly, telegram_token, hermes_api_key, minio_root_password]
   volumes:
     - adapter-outbox:/var/lib/queue-adapter
     - ./config:/config:ro
@@ -137,6 +137,8 @@ services:
       - RESULTS_STREAM=stream:results
       - DEAD_LETTER_STREAM=stream:dead-letter
       - CONSUMER_GROUP=router
+      # Stable name so pause-deferred PEL survives container recreate.
+      - CONSUMER_NAME=router
       - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
       - PG_PASSWORD_FILE=/run/secrets/pg_password
       - DISPATCHER=dryrun
@@ -148,6 +150,8 @@ services:
       - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
       - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
       - OUTBOX_DIR=/var/lib/queue-adapter/outbox
+      # Reclaim pause-deferred / crashed deliveries within 30s (design E11).
+      - CLAIM_MIN_IDLE_MS=30000
 
   adapter-dev-frontend:
     <<: *adapter-common
@@ -175,7 +179,7 @@ services:
       - METRICS_PORT=9100
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
-      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_agent_secret
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_root_password
       - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
       - PROJECTS_FILE=/config/projects.yaml
 
@@ -205,7 +209,7 @@ services:
       - METRICS_PORT=9100
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
-      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_agent_secret
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_root_password
       - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
       - PROJECTS_FILE=/config/projects.yaml
 
@@ -235,7 +239,7 @@ services:
       - METRICS_PORT=9100
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
-      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_agent_secret
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_root_password
       - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
       - PROJECTS_FILE=/config/projects.yaml
 
@@ -265,7 +269,7 @@ services:
       - METRICS_PORT=9100
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
-      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_agent_secret
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_root_password
       - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
       - PROJECTS_FILE=/config/projects.yaml
 
@@ -295,7 +299,7 @@ services:
       - METRICS_PORT=9100
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
-      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_agent_secret
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_root_password
       - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
       - PROJECTS_FILE=/config/projects.yaml
 
@@ -328,8 +332,9 @@ services:
       - PROJECTS_FILE=/config/projects.yaml
 
   minio:
-    # MinIO has no *_FILE env support — password comes from .env / compose interpolation.
-    # Agent write key lives in secrets/minio_agent_secret (see scripts/minio-init.sh).
+    # MinIO has no *_FILE env support — password from .env / compose interpolation.
+    # Adapters authenticate as root (SigV4) via secrets/minio_root_password (local-free).
+    # Prod may switch to a dedicated agent key (secrets/minio_agent_secret + minio-init).
     image: minio/minio:latest
     container_name: emaw-minio
     command: ["server", "/data", "--console-address", ":9001"]

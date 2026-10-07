@@ -123,6 +123,27 @@ async def test_pause_defers_routing(router, fake_redis, store) -> None:
     assert task["task_id"] not in store.states
 
 
+async def test_pause_then_resume_via_pending_read(router, router_settings, fake_redis, store) -> None:
+    """Paused work stays in the PEL; after resume, id=0 pending read fans it out."""
+    await router.ensure_groups()
+    await router.control.pause("dev-frontend")
+    task = make_task(task_id="t-pause-resume-1")
+    await fake_redis.xadd(
+        "stream:tasks",
+        {"task_id": task["task_id"], "envelope": json.dumps(task)},
+    )
+    # New message while paused → deferred (unacked).
+    assert await router.run_once(block_ms=1) >= 0
+    assert await fake_redis.xlen("stream:dev-frontend") == 0
+
+    await router.control.resume("dev-frontend")
+    # Pending (id=0) drain should route without waiting claim_min_idle.
+    await router.run_once(block_ms=1)
+    entries = await fake_redis.xrange("stream:dev-frontend")
+    assert len(entries) == 1
+    assert store.states[task["task_id"]]["state"] == "ASSIGNED"
+
+
 async def test_result_auto_handoff_to_reviewer(router, fake_redis, store) -> None:
     task = make_task()
     store.states[task["task_id"]] = {

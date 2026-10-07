@@ -70,7 +70,10 @@ class Router:
     async def run_once(self, *, block_ms: int | None = None) -> int:
         handled = 0
         handled += await self._claim_stale_tasks()
-        handled += await self._read_tasks(block_ms=0)
+        # Pending first (id=0): pause-deferred work resumes without waiting claim_min_idle.
+        handled += await self._read_tasks(start_id="0")
+        # Non-blocking new-message drain: Redis BLOCK 0 means "wait forever", so omit block.
+        handled += await self._read_tasks(start_id=">")
         handled += await self._read_results(block_ms=block_ms)
         await self.heartbeat()
         return handled
@@ -88,13 +91,12 @@ class Router:
             await self.handle_task(_s(message_id), fields)
         return len(messages)
 
-    async def _read_tasks(self, *, block_ms: int) -> int:
+    async def _read_tasks(self, *, start_id: str = ">") -> int:
         entries = await self.redis.xreadgroup(
             self.s.consumer_group,
             self.s.consumer_name,
-            {self.s.task_stream: ">"},
+            {self.s.task_stream: start_id},
             count=10,
-            block=block_ms,
         )
         handled = 0
         for _stream, messages in entries or []:

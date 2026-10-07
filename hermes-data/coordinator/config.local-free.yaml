@@ -6,6 +6,7 @@ model:
   provider: custom
   base_url: http://inference-ollama:11434/v1
   default: qwen2.5-coder:7b
+  ollama_num_ctx: 65536
 
 fallback_providers:
   - provider: custom

@@ -11,6 +11,9 @@
 services:
   inference-ollama:
     container_name: emaw-inference-ollama
+    # Hermes Agent ≥0.21 requires ≥64K context (default Ollama window is 32K).
+    environment:
+      OLLAMA_CONTEXT_LENGTH: ${OLLAMA_CONTEXT_LENGTH:-65536}
     ports: ["127.0.0.1:${INFERENCE_OLLAMA_PORT:-11436}:11434"]
     healthcheck:
       test: ["CMD", "ollama", "list"]

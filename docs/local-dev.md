@@ -70,13 +70,31 @@ on a shared local LLM (`qwen2.5-coder:7b` by default). No OpenRouter keys requir
 ```bash
 # .env: SECRET_HERMES_API_KEY=…  (Telegram optional for API-only drills)
 make secrets-dev
+cp -n config/rbac.example.yaml config/rbac.yaml   # gitignored; used by /internal RBAC
+
+# Stop any older Phase 2 stack first (single queue-adapter races the Phase 3 router):
+make down
+
 make up-local-free              # compose -f docker-compose.yml -f docker-compose.local-free.yml
-make local-llm-pull             # first time: pull qwen2.5-coder:7b (needs NVIDIA GPU)
+make local-llm-pull             # first time: pull qwen2.5-coder:7b (GPU preferred; CPU works slowly)
 make local-free-check && make phase3-check
+make webhook-test KIND=issue    # Flow A smoke
 ```
 
-Host ports: inference Ollama `127.0.0.1:11436`, SocratiCode Ollama `11435`, Qdrant `16333`.
+Host ports: inference Ollama `127.0.0.1:11436`, SocratiCode Ollama `11435`, Qdrant `16333`,
+gateway `8700`, MinIO `9000`.
 Configs: `hermes-data/*/config.local-free.yaml` (mounted over `config.yaml`).
+
+**Context window:** Hermes Agent ≥0.21 needs ≥64K tokens. Local-free sets
+`OLLAMA_CONTEXT_LENGTH=65536` on `inference-ollama` and `model.ollama_num_ctx: 65536`
+in each agent config. Without this, `/v1/runs` fail immediately with a context error.
+
+**RAM:** full stack on ~16 GiB host is workable; Ollama 7B + 64K ctx residencies ~2–3 GiB
+while a run is active. Prefer stopping unrelated Docker projects before `up-local-free`.
+
+**MinIO:** `scripts/minio-init.sh` creates `emaw-artifacts` (host `mc` or ephemeral
+`minio/mc` container). Adapters upload with AWS SigV4 using root credentials
+(`MINIO_ACCESS_KEY` + `secrets/minio_root_password`).
 
 ## 4. Hermes (single agent for Phase 0)
 

@@ -12,19 +12,33 @@
 | D3.4 | route-task, status-report, human-approval-gate, pause, safe-mode | ✅ (HITL = y/n+nonce, DECISION-17) |
 | D3.5 | rbac.yaml enforcement | ✅ gateway `/internal/*` |
 | D3.6 | Docker secrets / networks | ✅ |
-| D3.7 | MinIO + audit | ✅ service + adapter upload + audit writes |
+| D3.7 | MinIO + audit | ✅ service + adapter SigV4 upload + audit writes |
 | D3.8 | Linux VM / prod compose | ✅ `docker-compose.prod.yml` + deploy doc (VM site = DECISION-2) |
 
 ## Exit checks
 
 ```bash
+# If a Phase 2 single-adapter stack is still running, stop it first
+# (profile `single` would race router on stream:tasks):
+make down
+
 make up-local-free && make local-llm-pull   # once
 make local-free-check
 make phase3-check
+
+# Live Flow A (API-only; no Telegram):
+make webhook-test KIND=issue
+# Expect: QUEUED → ASSIGNED → IN_PROGRESS → DONE (+ auto handoff reviewer)
+# Redis: stream:tasks → stream:dev-frontend → stream:results → stream:reviewer
+# MinIO: s3://emaw-artifacts/<project>/<task_id>/run-output.md
+
+# E11 kill switch (Bearer hermes_api_key + X-EMAW-User-Id admin):
+# POST /internal/control/pause {"agent":"all"} → new tasks stay QUEUED / unacked
+# POST /internal/control/resume {"agent":"all"} → pending (id=0) drains within seconds
+# POST /internal/control/safe-mode {"enabled":true} → constraints.require_approval
+
 # Optional live drills (need Telegram + DECISION-8/11):
 # Flow C: Telegram "[Backend] …" → route-task → stream:dev-backend
-# Flow A: issue webhook → router → worker → HANDOFF → reviewer
-# E11: /pause all → no new dispatches; /safe-mode on → require_approval
 ```
 
 | Gate | Evidence |
@@ -32,9 +46,29 @@ make phase3-check
 | E3 secrets scope | per-agent secrets in compose |
 | E4 isolation | networks edge/control/workers/inference |
 | E5 HITL | approvals table + `/internal/approvals` |
-| E6 audit | gateway + router + adapter audit_events |
+| E6 audit | gateway + router + adapter audit_events (`task.routed`, `task.handed_off`, …) |
 | E9 budget | breaker token/hour + prompt budgets |
-| E11 kill switch | pause / safe-mode keys + circuit breaker |
+| E11 kill switch | pause / safe-mode keys + circuit breaker; router `CONSUMER_NAME=router` + pending read |
+
+## Live drill log (local-free, 2026-10-07)
+
+| Check | Result |
+|---|---|
+| `local-free-check` / `phase3-check` | PASS (6 agents + router + 5 adapters + MinIO) |
+| Flow A webhook → Hermes (Ollama) → results | PASS (`t-20261007-886bba` DONE, handoff `auto_review_fallback` → reviewer) |
+| MinIO artifact PUT | PASS after SigV4 fix (`run-output.md` listed in bucket) |
+| `/internal/tasks` RBAC | PASS (admin 200, no bearer 401, viewer pause 403) |
+| pause all / resume | PASS (task stayed QUEUED while paused; resume drains PEL) |
+| `/metrics` on adapter | PASS (`emaw_tasks_dispatched_total`) |
+| coordinator → `webhook-gateway:8700` | PASS (healthz 200) |
+| Unit tests | queue-adapter 38 · gateway 43 (integration deselected) |
+
+### Fixes from the drill
+
+- Router must **not** use Redis `BLOCK 0` (means wait forever) — omit `block` for non-blocking reads.
+- Hermes ≥0.21 rejects Ollama default 32K context — set `OLLAMA_CONTEXT_LENGTH` + `model.ollama_num_ctx: 65536`.
+- Artifact upload needs **AWS SigV4** (HTTP Basic / `x-amz-acl` → MinIO 400).
+- Pause-deferred work: read pending with `XREADGROUP … 0` + stable `CONSUMER_NAME=router` + `CLAIM_MIN_IDLE_MS=30000`.
 
 ## Blocked on org input
 
