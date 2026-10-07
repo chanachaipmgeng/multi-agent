@@ -19,6 +19,7 @@ hermes-data/*/memory/*
 hermes-data/*/skills/*
 !hermes-data/*/skills/.gitkeep
 hermes-data/coordinator/rbac.yaml
+config/rbac.yaml
 hermes-data/*/sessions/
 hermes-data/*/cache/
 hermes-data/*/*.db

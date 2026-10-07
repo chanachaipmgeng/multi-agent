@@ -6,25 +6,24 @@ Incident Response: มนุษย์สั่งงานผ่าน Telegram,
 Webhook Gateway, Coordinator มอบหมายงานให้ worker agents ที่ทำงานใน Docker sandbox และทุก action ที่มี
 ผลกระทบสูงต้องผ่าน Human-in-the-Loop
 
-สถานะ: **Phase 0 — Foundation (code ✅ · live exit criteria ⏳)** · **Phase 1 — tooling ✅ · blocked on DECISION-5/11**
-Hermes Agent **v0.21.5** capability check: [`docs/hermes-capability-check.md`](docs/hermes-capability-check.md) · decisions: [`docs/decisions.md`](docs/decisions.md)
-ดู [`docs/phase0-exit-criteria.md`](docs/phase0-exit-criteria.md) / [`docs/phase0-runbook.md`](docs/phase0-runbook.md),
-[`docs/phase1-exit-criteria.md`](docs/phase1-exit-criteria.md) และ [`docs/phase2-exit-criteria.md`](docs/phase2-exit-criteria.md)
-เอกสารออกแบบฉบับเต็ม: *Enterprise Multi-Agent Workspace — System Design Document v1.1*
+สถานะ: **Phase 3 — Multi-Agent (code ✅ · live drills ⏳ on DECISION-5/8/11)** · Phases 0–2 tooling ✅
+Hermes Agent **v0.21.5** · decisions: [`docs/decisions.md`](docs/decisions.md) · design: [`docs/design/system-design-v1.1.md`](docs/design/system-design-v1.1.md) ([errata](docs/design/errata.md))
+Exit criteria: [`phase0`](docs/phase0-exit-criteria.md) · [`phase1`](docs/phase1-exit-criteria.md) · [`phase2`](docs/phase2-exit-criteria.md) · [`phase3`](docs/phase3-exit-criteria.md)
 
 ## Architecture (ย่อ)
 
 ```text
-Telegram ──▶ coordinator ──▶ Redis Streams ──▶ dev-frontend / dev-backend / reviewer / devops / qa
-                 ▲                │                          │ (Docker sandbox, git worktree per task)
-GitLab ─▶ Cloudflare Tunnel ─▶ Webhook Gateway (FastAPI) ─▶ stream:tasks ─▶ queue-adapter ─▶ Hermes
-          POST /webhook/gitlab    verify · dedupe · normalize      │   enrich (job trace, redacted) · prompt · dispatch
-                                                                   ▼
-                                               PostgreSQL Task Store + audit (append-only)
+Telegram ──▶ coordinator ──▶ POST /internal/tasks ──▶ stream:tasks ──▶ router ──▶ stream:<role>
+GitLab ─▶ Tunnel ─▶ Webhook Gateway ─────────────────────────────────────┘         │
+                                          verify · dedupe · normalize · RBAC         ▼
+                                                                    adapter-<role> → Hermes :8642
+                                                                         │
+                                                                    stream:results → router → handoffs / state
+                                                                         ▼
+                                                         PostgreSQL + MinIO artifacts + audit
 ```
 
-Phase 1–2: `queue-adapter` ตัวเดียวส่งงานให้ Hermes ตัวเดียว (`CONSUMER_GROUP=hermes-single`);
-Phase 3: adapter เป็น sidecar ต่อ role อ่าน `stream:<role>` และ coordinator เป็นผู้ route
+Phase 3 (DECISION-16): `router` fans out; one `adapter-<role>` per worker; coordinator skills handle Telegram tags / HITL / kill switch.
 
 หลักการ: Human-in-command · Sandbox by default · Least privilege · One role, one profile ·
 Everything is auditable · Grow in phases
@@ -33,16 +32,17 @@ Everything is auditable · Grow in phases
 
 | Path | What |
 |---|---|
-| `docker-compose.yml` | dev stack: `redis`, `postgres`, `webhook-gateway`; profiles `agents` (6 Hermes), `ingress` (cloudflared), `onprem-llm` (confidential Ollama), `socraticode` (Ollama + Qdrant for SocratiCode) |
-| `docker-compose.local-free.yml` | override: coordinator + dev-backend + reviewer → `inference-ollama` (`make up-local-free`, DECISION-15) |
-| `webhook-gateway/` | FastAPI gateway — `X-Gitlab-Token` constant-time check, idempotency (`X-Gitlab-Event-UUID`), Task envelope, Redis Streams publisher, Postgres task store, `/metrics`; tests |
-| `queue-adapter/` | Redis Streams consumer → Hermes dispatcher (`dryrun` / `http` / `hermes_cli`), GitLab job-trace enrichment with secret redaction, retry via `XAUTOCLAIM`, dead-letter, task state + audit, Telegram notice; tests |
-| `db/migrations/` | Task Store schema: `tasks`, `handoffs`, `approvals`, `audit_events` (append-only), least-privilege roles |
-| `config/projects.yaml` | project allowlist + routing (opt-in label `agent-ready`, `auto_push_branches: []`) |
-| `config/policies/platform-policy.yaml` | platform policy layer 1: never push `main`, HITL matrix, limits, prompt-injection rule |
-| `config/rbac.example.yaml` | coordinator RBAC (approver ≠ developer) — enforced Phase 3 |
-| `hermes-data/<agent>/` | 6 profiles (`coordinator`, `dev-frontend`, `dev-backend`, `reviewer`, `devops`, `qa`): `AGENT.md`, `config.yaml`, `skills/`, `memory/` |
-| `skills/` | version-controlled skills; Phase 0–2 procedures in git (`dev-flow` … `review-with-socraticode` / `deep-review`); Phase 3 still placeholder |
+| `docker-compose.yml` | platform + `router` + 5 role adapters + MinIO; profiles `agents`, `ingress`, `onprem-llm`, `socraticode`, `single` (legacy) |
+| `docker-compose.local-free.yml` | all 6 agents → `inference-ollama` (`make up-local-free`, DECISION-15) |
+| `docker-compose.prod.yml` | Linux VM override (`make up-prod`) |
+| `webhook-gateway/` | GitLab webhook + `/internal/*` control plane (tasks, approvals, pause/safe-mode) + RBAC |
+| `queue-adapter/` | `MODE=router\|worker` — fan-out, HANDOFF parse, breaker, MinIO upload, `/metrics` |
+| `db/migrations/` | Task Store schema: `tasks`, `handoffs`, `approvals`, `audit_events` |
+| `config/projects.yaml` | project allowlist + routing |
+| `config/policies/platform-policy.yaml` | never push `main`, HITL matrix, limits |
+| `config/rbac.example.yaml` | copy to `config/rbac.yaml` (gitignored) — enforced on `/internal/*` |
+| `hermes-data/<agent>/` | 6 profiles + `config.local-free.yaml` |
+| `skills/` | Phase 0–3 procedures (incl. `route-task`, `fix-pipeline`, `write-e2e`, …) |
 | `workspace/` | project clones (gitignored) + `_templates/` (`project-standards.md`, `.agentignore`, `.socraticodeignore`) + `.worktrees/` |
 | `examples/sandbox-smoke/` | minimal pilot project whose `./test.sh` returns exit 0/1 correctly |
 | `cloudflared/` | Named Tunnel config template + runbook (Phase 1, blocked on domain) |
@@ -60,24 +60,19 @@ git clone https://github.com/chanachaipmgeng/multi-agent.git && cd multi-agent
 # 1) secrets — dev shortcut (plaintext .env → ./secrets/*). Production path: make secrets-init / secrets-encrypt / secrets-decrypt
 cp .env.example .env && make secrets-dev
 
-# 2) platform stack
-make up                                  # redis + postgres (+ schema) + webhook-gateway :8700 + queue-adapter (dryrun)
-curl -s localhost:8700/readyz            # {"status":"ok","checks":{"redis":true,"task_store":true}}
+# 2) platform stack (router + per-role adapters + MinIO)
+cp config/rbac.example.yaml config/rbac.yaml
+make up                                  # redis + postgres + gateway + router + adapters + minio
+curl -s localhost:8700/readyz
 
-# 3) fire a sample GitLab webhook and watch it flow
-make webhook-test                        # Issue Hook (agent-ready, area:frontend) → {"status":"queued","assigned_to":"dev-frontend",...}
-make webhook-test KIND=pipeline          # failed pipeline → devops
-scripts/send-test-webhook.sh issue --bad-token    # → HTTP 401
-make outbox                              # prompts the adapter built for Hermes (DISPATCHER=dryrun)
+# 3) sample webhook → router fans out to stream:<role>
+make webhook-test                        # → queued → router → stream:dev-frontend
 docker compose exec postgres psql -U emaw -c 'select task_id,type,state,assigned_to from tasks'
 
-# 4) Hermes agent — cloud LLM (OpenRouter) OR local-free (Ollama, no OpenRouter keys)
-# Cloud:
+# 4) Hermes — cloud OR local-free (all 6 agents on Ollama)
 make hermes-seed && make skills-sync
-docker compose --profile agents up -d dev-backend   # or: make up-agents
-# Local-free (DECISION-15; needs NVIDIA GPU + SECRET_HERMES_API_KEY):
-# make up-local-free && make local-llm-pull && make local-free-check
-# then ADAPTER_DISPATCHER=hermes_api HERMES_API_URL=http://dev-backend:8642 → recreate queue-adapter
+# make up-agents
+# Local-free: make up-local-free && make local-llm-pull && make local-free-check && make phase3-check
 
 # 5) tests
 make test                                # gateway + adapter unit tests (incl. hermes_api dispatcher)

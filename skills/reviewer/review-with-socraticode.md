@@ -58,6 +58,9 @@ SocratiCode is AGPL local-first (DECISION-6): no API key. Tools live under `mcp_
    ```
    แจ้ง coordinator: "มี patch จากรีวิว — ส่งให้ dev agent แล้ว รอ human/dev ตัดสินใจ"
 7. **จบ task** — `DONE` พร้อมสรุปรีวิว; ไม่มี git write จาก reviewer
+8. **HANDOFF block (บังคับ)** — ตาม `skills/_shared/README.md`:
+   - มี patch / 🛑 → `to_agent: <default_worker>`, `reason: review`
+   - ผ่าน / มีแต่ 💡 → `to_agent:` (ว่าง), `reason: done`
 
 ## ห้าม
 

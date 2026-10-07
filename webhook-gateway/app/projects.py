@@ -84,6 +84,11 @@ class ProjectRegistry(BaseModel):
             (p for p in self.projects if p.path_with_namespace == path_with_namespace), None
         )
 
+    def by_key(self, key: str | None) -> Project | None:
+        if not key:
+            return None
+        return next((p for p in self.projects if p.key == key), None)
+
     def resolve(self, project_id: int | None, path_with_namespace: str | None) -> Project | None:
         """Allowlist check: the project must match by id (preferred) or by path."""
         return self.by_gitlab_id(project_id) or self.by_path(path_with_namespace)

@@ -23,5 +23,7 @@ Do not put API keys in `config.yaml`. Use UPPER_SNAKE in `.env` (Hermes routes `
 
 ## Phase 0 vs Phase 3
 
-Phase 0 runs a **single** agent (`dev-backend` or `dev-frontend`, or host-installed Hermes).
-Phase 3 brings all six profiles online as separate compose services.
+Phase 0–2 could run a single agent; **Phase 3** runs all six profiles as separate compose
+services, each with an `adapter-<role>` sidecar reading `stream:<role>`.
+
+Local-free: mount `config.local-free.yaml` (all six agents → shared `inference-ollama`).

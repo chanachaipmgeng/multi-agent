@@ -46,6 +46,10 @@ metadata:
 9. **เมื่อ approved** — push พร้อม push options `-o merge_request.create -o merge_request.target=<ref ที่พัง หรือ main ตาม rulebook>`
    และติดตาม pipeline ใหม่; รายงาน
    `✅ MR !<iid> พร้อมรีวิว · pipeline ใหม่ #<id> กำลังรัน` → task `DONE`
+10. **HANDOFF block (บังคับ)** — ตาม `skills/_shared/README.md`:
+    - ส่งต่อ dev → `to_agent: <default_worker>`, `reason: review`
+    - รอ approval → `reason: awaiting_approval`
+    - เสร็จ / NEEDS_HUMAN → `reason: done` หรือ `needs_human`
 
 ## ห้าม
 - รัน deploy, `docker system prune`, แก้ runner/infra จริง — ต้อง `approver` อนุมัติผ่าน skill `deploy-prod` / infra_change เท่านั้น

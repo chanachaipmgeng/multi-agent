@@ -35,6 +35,10 @@ class DispatchResult:
     ok: bool
     detail: str = ""
     retryable: bool = True
+    output: str = ""
+    usage: dict[str, Any] | None = None
+    run_id: str | None = None
+    elapsed_seconds: float = 0.0
 
 
 class Dispatcher(Protocol):
@@ -176,7 +180,35 @@ class HermesApiDispatcher:
         log.info(
             "hermes_api: created run %s for %s (replayed=%s)", run_id, task_id, replayed
         )
-        return await self._poll_until_done(run_id, task_id)
+        started = time.monotonic()
+        result = await self._poll_until_done(run_id, task_id)
+        result.elapsed_seconds = time.monotonic() - started
+        result.run_id = str(run_id)
+        return result
+
+    @staticmethod
+    def _extract_output(data: dict[str, Any]) -> str:
+        for key in ("output", "result", "response", "message"):
+            val = data.get(key)
+            if isinstance(val, str) and val.strip():
+                return val
+            if isinstance(val, dict):
+                for nested in ("content", "text", "output"):
+                    if isinstance(val.get(nested), str) and val[nested].strip():
+                        return val[nested]
+        messages = data.get("messages")
+        if isinstance(messages, list) and messages:
+            last = messages[-1]
+            if isinstance(last, dict):
+                content = last.get("content")
+                if isinstance(content, str):
+                    return content
+        return ""
+
+    @staticmethod
+    def _extract_usage(data: dict[str, Any]) -> dict[str, Any] | None:
+        usage = data.get("usage") or data.get("token_usage")
+        return usage if isinstance(usage, dict) else None
 
     async def _poll_until_done(self, run_id: str, task_id: str) -> DispatchResult:
         deadline = time.monotonic() + self._timeout
@@ -207,23 +239,31 @@ class HermesApiDispatcher:
                 await asyncio.sleep(self._poll)
                 continue
             last_status = str(data.get("status") or data.get("state") or "unknown").lower()
+            output = self._extract_output(data)
+            usage = self._extract_usage(data)
             if last_status in _WAITING:
                 # Human gate is outside the adapter — count as successfully handed off.
                 return DispatchResult(
                     ok=True,
                     detail=f"run_id={run_id} status={last_status} task_id={task_id}",
+                    output=output,
+                    usage=usage,
                 )
             if last_status in _TERMINAL:
                 if last_status == "completed":
                     return DispatchResult(
                         ok=True,
                         detail=f"run_id={run_id} status=completed task_id={task_id}",
+                        output=output,
+                        usage=usage,
                     )
                 err = data.get("error") or data.get("detail") or last_status
                 return DispatchResult(
                     ok=False,
                     detail=f"run_id={run_id} status={last_status}: {err}"[:500],
                     retryable=last_status in {"failed", "error"},
+                    output=output,
+                    usage=usage,
                 )
             await asyncio.sleep(self._poll)
 

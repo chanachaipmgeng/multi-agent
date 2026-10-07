@@ -43,15 +43,31 @@ AGPL note: fine for private/internal use of unmodified upstream. If you **modify
 
 Obsolete assumption: early drafts treated DECISION-6 as “blocked until SECRET_SOCRATICODE_KEY”.
 
-## DECISION-15 — Local-free LLM mode (decided 2026-10-07)
+## DECISION-15 — Local-free LLM mode (updated Phase 3)
 
 | Item | Decision |
 |---|---|
-| Scope | **coordinator + dev-backend + reviewer** only (minimal Phase 0/2 drill set) |
+| Scope | **all 6 agents** (coordinator, dev-frontend, dev-backend, reviewer, qa, devops) |
 | Provider | Hermes `model.provider: custom` → `http://inference-ollama:11434/v1` |
 | Default model | `qwen2.5-coder:7b` (GPU 8–12 GB VRAM); override with `LOCAL_LLM_MODEL` |
 | Compose | `docker-compose.local-free.yml` + `make up-local-free` / `local-llm-pull` / `local-free-check` |
-| Seed | `LLM_MODE=local` → `CUSTOM_API_KEY=ollama` in those three agents’ `.env` |
-| Trade-off | Free / private; quality and latency below cloud Sonnet — not a production substitute without evaluation |
+| Seed | `LLM_MODE=local` → `CUSTOM_API_KEY=ollama` in every agent `.env` |
+| Trade-off | Shared inference queue on one GPU (no extra VRAM); quality/latency below cloud Sonnet |
 
-Other agents (`dev-frontend`, `devops`, `qa`) stay on OpenRouter configs until explicitly opted in.
+## DECISION-16 — Deterministic routing in Python router (Phase 3)
+
+| Item | Decision |
+|---|---|
+| Router | `queue-adapter` with `MODE=router` consumes `stream:tasks`, fans out to `stream:<role>` |
+| Workers | One `queue-adapter` sidecar per role (`MODE=worker`, `ROLE=<agent>`) → Hermes `:8642` |
+| Rules 1/2/4 | Implemented in `queue-adapter/app/projects.py` (same semantics as gateway) |
+| Rules 3/5 | Coordinator skill `route-task` (Telegram tags / ask user) → `POST /internal/tasks` |
+| Handoff | Agents emit `HANDOFF:` YAML; router writes `handoffs` + re-enqueues; missing block from a dev worker → auto `reviewer` if allowed |
+
+## DECISION-17 — HITL via y/n + nonce (deviation from D3.4 inline keyboard)
+
+| Item | Decision |
+|---|---|
+| Telegram UX | Text `y <nonce>` / `n <nonce>` (and Hermes native terminal approvals) |
+| Why | Hermes owns the Telegram update loop; gateway cannot reliably own callback queries |
+| Persistence | `POST /internal/approvals` + `/internal/approvals/{nonce}/decide` + `approvals` table |

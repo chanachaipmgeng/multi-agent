@@ -53,6 +53,9 @@ metadata:
 7. **Handoff (ถ้ามีความเสี่ยงสูง)** — ส่งสรุปไป `default_worker` ของโปรเจกต์พร้อม
    `แนะนำเพิ่ม test หรือแยก MR` — **ไม่สร้าง patch เอง** (patch อยู่ใน `review-with-socraticode`)
 8. **จบ** — `DONE` พร้อมรายงาน; ไม่มี git write
+9. **HANDOFF block (บังคับ)** — ตาม `skills/_shared/README.md`:
+   - ความเสี่ยงสูง → `to_agent: <default_worker>`, `reason: review`
+   - ไม่พบประเด็น → `to_agent:` (ว่าง), `reason: done`
 
 ## ห้าม
 

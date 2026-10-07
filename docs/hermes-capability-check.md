@@ -92,6 +92,14 @@ EMAW promotes reviewed skills from `skills/` → `hermes-data/<agent>/skills/ema
 - API runs waiting on approval → `POST /v1/runs/{id}/approval`
 - EMAW `human-approval-gate` skill remains the policy layer for push/deploy/migration; Hermes approvals are defense-in-depth for shell commands
 
+## Slash commands (Phase 3)
+
+Hermes may treat unknown Telegram `/pause`, `/resume`, `/safe-mode` as plain text for the LLM.
+Skills `pause-resume` / `safe-mode` therefore accept both slash forms and natural language
+(`pause all`, `safe-mode on`). Prefer gateway `/internal/control/*` over relying on Hermes
+built-in command routing. HITL decisions use `y <nonce>` / `n <nonce>` (DECISION-17), not
+custom inline-keyboard callbacks owned by the gateway.
+
 ## Sandbox strategy (see DECISION-14)
 
 On this Windows + Docker Desktop host there is no Ubuntu WSL distro, only `docker-desktop`.

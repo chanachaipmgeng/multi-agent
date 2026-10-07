@@ -1,0 +1,115 @@
+# Production override for Linux VM (D3.8 / design §9.2).
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml --profile agents --profile ingress up -d
+# Or: make up-prod
+#
+# Notes:
+# - Host ports stay on 127.0.0.1 in the base file (safe on a single VM).
+# - External traffic must arrive via cloudflared (profile ingress).
+# - Force hermes_api dispatcher; always-restart; tighter logs on coordinator.
+
+services:
+  router:
+    restart: always
+
+  adapter-dev-frontend:
+    restart: always
+    environment:
+      - LOG_LEVEL=${ADAPTER_LOG_LEVEL:-info}
+      - REDIS_URL=redis://redis:6379/0
+      - MODE=worker
+      - ROLE=dev-frontend
+      - TASK_STREAM=stream:dev-frontend
+      - CONSUMER_GROUP=adapter-dev-frontend
+      - RESULTS_STREAM=stream:results
+      - DEAD_LETTER_STREAM=stream:dead-letter
+      - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
+      - PG_PASSWORD_FILE=/run/secrets/pg_password
+      - DISPATCHER=hermes_api
+      - HERMES_API_URL=http://dev-frontend:8642
+      - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
+      - OUTBOX_DIR=/var/lib/queue-adapter/outbox
+      - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
+      - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - CONTROL_PREFIX=emaw:control
+      - METRICS_PORT=9100
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_agent_secret
+      - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
+      - PROJECTS_FILE=/config/projects.yaml
+
+  adapter-dev-backend:
+    restart: always
+    environment:
+      - LOG_LEVEL=${ADAPTER_LOG_LEVEL:-info}
+      - REDIS_URL=redis://redis:6379/0
+      - MODE=worker
+      - ROLE=dev-backend
+      - TASK_STREAM=stream:dev-backend
+      - CONSUMER_GROUP=adapter-dev-backend
+      - RESULTS_STREAM=stream:results
+      - DEAD_LETTER_STREAM=stream:dead-letter
+      - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
+      - PG_PASSWORD_FILE=/run/secrets/pg_password
+      - DISPATCHER=hermes_api
+      - HERMES_API_URL=http://dev-backend:8642
+      - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
+      - OUTBOX_DIR=/var/lib/queue-adapter/outbox
+      - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
+      - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - CONTROL_PREFIX=emaw:control
+      - METRICS_PORT=9100
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_agent_secret
+      - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
+      - PROJECTS_FILE=/config/projects.yaml
+
+  adapter-reviewer:
+    restart: always
+
+  adapter-qa:
+    restart: always
+
+  adapter-devops:
+    restart: always
+
+  coordinator:
+    restart: always
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "10" }
+
+  dev-frontend:
+    restart: always
+
+  dev-backend:
+    restart: always
+
+  reviewer:
+    restart: always
+
+  devops:
+    restart: always
+
+  qa:
+    restart: always
+
+  redis:
+    restart: always
+
+  postgres:
+    restart: always
+
+  minio:
+    restart: always
+
+  webhook-gateway:
+    restart: always
+
+  cloudflared:
+    restart: always

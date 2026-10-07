@@ -37,7 +37,11 @@ worktree_sync: false
 skills:
   auto_load:
     - human-approval-gate
-    - switch-context
+    - route-task
+    - status-report
+    - pause-resume
+    - safe-mode
+    # switch-context: deprecated in Phase 3 (prefer route-task + separate profiles)
 
 database:
   # Named volume preferred; delete is safe on Windows bind-mounts (WAL + drvfs).
@@ -48,7 +52,8 @@ emaw:
   agent_md: /opt/data/AGENT.md
   platform_policy: /config/policies/platform-policy.yaml
   projects: /config/projects.yaml
-  rbac: /opt/data/rbac.yaml
+  rbac: /config/rbac.yaml
+  gateway_internal_url: http://webhook-gateway:8700
   inbox_stream: stream:tasks
   results_stream: stream:results
   token_budget_per_task: 50000

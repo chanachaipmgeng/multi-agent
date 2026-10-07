@@ -49,4 +49,5 @@ old credential at the provider → record `secret.rotated` in the audit log.
 * `.gitignore` excludes `.env`, `.env.*` (except `.env.example`), `secrets/*`, `*.age`, `*.pem`, `*.key`.
 * `.gitleaks.toml` + pre-commit hook + CI job scan every commit (GitLab PAT, Telegram, tunnel token, age key patterns added).
 * `webhook-gateway` refuses to start without `GITLAB_WEBHOOK_SECRET(_FILE)`; it never logs the token.
-* Phase 3–4 moves to Docker secrets per agent and then Vault/Infisical with short-lived tokens (E7).
+* Phase 3: Docker secrets per agent are already wired in compose (incl. `minio_agent_secret`).
+  Phase 4 adds Vault/Infisical short-lived tokens (E7).

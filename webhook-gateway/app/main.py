@@ -31,6 +31,7 @@ from redis.asyncio import Redis
 from . import __version__
 from .envelope import TaskState, fallback_event_uuid, normalize
 from .idempotency import IdempotencyStore
+from .internal import router as internal_router
 from .metrics import (
     registry,
     tasks_enqueued_total,
@@ -40,6 +41,7 @@ from .metrics import (
 )
 from .projects import ProjectRegistry
 from .queue import TaskPublisher
+from .rbac import RbacPolicy
 from .security import verify_gitlab_token
 from .settings import Settings
 from .store import TaskStore, build_store
@@ -61,6 +63,7 @@ def create_app(
 
     projects = registry_override or ProjectRegistry.from_yaml(settings.projects_file)
     task_store: TaskStore = store if store is not None else build_store(settings.database_url)
+    rbac = RbacPolicy.from_yaml(settings.rbac_file)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -74,12 +77,14 @@ def create_app(
             app.state.redis, stream=settings.task_stream, maxlen=settings.task_stream_maxlen
         )
         app.state.store = task_store
+        app.state.rbac = rbac
         await task_store.connect()
         log.info(
-            "gateway ready: stream=%s projects=%d task_store=%s",
+            "gateway ready: stream=%s projects=%d task_store=%s rbac_users=%d",
             settings.task_stream,
             len(projects.projects),
             type(task_store).__name__,
+            len(rbac.users),
         )
         try:
             yield
@@ -98,6 +103,8 @@ def create_app(
     )
     app.state.settings = settings
     app.state.projects = projects
+    app.state.rbac = rbac
+    app.include_router(internal_router)
 
     # ---------------------------------------------------------------- probes
     @app.get("/healthz")

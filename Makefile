@@ -44,9 +44,12 @@ secrets-dev: ## dev shortcut: plaintext .env → ./secrets/* (no SOPS)
 	@scripts/secrets-decrypt.sh --from-plain-env
 
 # --------------------------------------------------------------- compose
-up: ## start redis + postgres + webhook-gateway + queue-adapter
+up: ## start redis + postgres + gateway + minio + router + 5 role adapters
 	@test -s secrets/gitlab_webhook_secret || (echo "run 'make secrets-decrypt' (or secrets-dev) first"; exit 1)
-	$(COMPOSE) up -d --build redis postgres webhook-gateway queue-adapter
+	@test -s secrets/minio_agent_secret || (printf '%s' 'emaw-minio-agent-dev' > secrets/minio_agent_secret)
+	@cp -n config/rbac.example.yaml config/rbac.yaml 2>/dev/null || true
+	$(COMPOSE) up -d --build redis postgres webhook-gateway minio router \
+		adapter-dev-frontend adapter-dev-backend adapter-reviewer adapter-qa adapter-devops
 
 up-agents: ## seed Hermes .env + skills, then start agent profile containers
 	@test -s secrets/hermes_api_key || (echo "set SECRET_HERMES_API_KEY in .env and re-run secrets-dev/decrypt"; exit 1)
@@ -67,16 +70,20 @@ up-socraticode: ## start Ollama + Qdrant for SocratiCode MCP (DECISION-6)
 socraticode-check: ## smoke-check SocratiCode Ollama + Qdrant (no license needed)
 	@scripts/socraticode-infra-check.sh
 
-up-local-free: ## local-free stack: platform + socraticode + inference-ollama + 3 agents
+up-local-free: ## local-free stack: platform + router + 5 adapters + socraticode + inference + 6 agents
 	@test -s secrets/hermes_api_key || (echo "set SECRET_HERMES_API_KEY in .env and re-run secrets-dev/decrypt"; exit 1)
+	@test -s secrets/minio_agent_secret || (echo "emaw-minio-agent-dev" > secrets/minio_agent_secret)
+	@cp -n config/rbac.example.yaml config/rbac.yaml 2>/dev/null || true
 	@docker volume create socraticode_ollama_data >/dev/null
 	@docker volume create socraticode_qdrant_data >/dev/null
 	@LLM_MODE=local scripts/hermes-seed-env.sh
 	@scripts/sync-skills.sh
-	$(COMPOSE_LOCAL_FREE) --profile agents --profile socraticode --profile onprem-llm up -d \
-		redis postgres webhook-gateway queue-adapter \
+	ADAPTER_DISPATCHER=hermes_api $(COMPOSE_LOCAL_FREE) --profile agents --profile socraticode --profile onprem-llm up -d \
+		redis postgres webhook-gateway minio router \
+		adapter-dev-frontend adapter-dev-backend adapter-reviewer adapter-qa adapter-devops \
 		inference-ollama socraticode-ollama socraticode-qdrant \
-		coordinator dev-backend reviewer
+		coordinator dev-frontend dev-backend reviewer qa devops
+	@scripts/minio-init.sh || true
 
 local-llm-pull: ## pull LOCAL_LLM_MODEL into inference-ollama (default qwen2.5-coder:7b)
 	docker exec emaw-inference-ollama ollama pull $(LOCAL_LLM_MODEL)
@@ -84,15 +91,26 @@ local-llm-pull: ## pull LOCAL_LLM_MODEL into inference-ollama (default qwen2.5-c
 local-free-check: ## smoke-check local-free LLM + SocratiCode infra
 	@scripts/local-free-check.sh
 
+up-prod: ## production override on Linux VM (needs secrets + rbac.yaml)
+	@test -s secrets/hermes_api_key || (echo "decrypt secrets first"; exit 1)
+	@test -f config/rbac.yaml || (echo "copy config/rbac.example.yaml → config/rbac.yaml"; exit 1)
+	ADAPTER_DISPATCHER=hermes_api $(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml --profile agents --profile ingress up -d
+
+phase3-check: ## Phase 3 smoke: router + adapters + pause control
+	@scripts/phase3-check.sh
+
+worktree-clean: ## prune worktrees idle > 7 days (D2.4)
+	@scripts/worktree-cleanup.sh
+
 down: ## stop everything (keeps volumes)
-	$(COMPOSE_LOCAL_FREE) --profile agents --profile ingress --profile onprem-llm --profile socraticode down
-	$(COMPOSE) --profile agents --profile ingress --profile onprem-llm --profile socraticode down
+	$(COMPOSE_LOCAL_FREE) --profile agents --profile ingress --profile onprem-llm --profile socraticode --profile single down
+	$(COMPOSE) --profile agents --profile ingress --profile onprem-llm --profile socraticode --profile single down
 
-logs: ## tail gateway + adapter logs
-	$(COMPOSE) logs -f webhook-gateway queue-adapter
+logs: ## tail gateway + router + adapter logs
+	$(COMPOSE) logs -f webhook-gateway router adapter-dev-backend
 
-outbox: ## list prompts the adapter produced in dryrun mode
-	$(COMPOSE) exec queue-adapter sh -c 'ls -1t /var/lib/queue-adapter/outbox | head -20'
+outbox: ## list prompts adapters produced in dryrun mode
+	$(COMPOSE) exec adapter-dev-backend sh -c 'ls -1t /var/lib/queue-adapter/outbox | head -20'
 
 # ---------------------------------------------------------------- phase 1
 tunnel-setup: ## create Named Tunnel + DNS + config (HOST=webhook.example.com [NAME=emaw] [SERVICE=1])
@@ -147,4 +165,4 @@ webhook-test: ## send a sample Issue Hook to the running gateway (KIND=issue|pip
 verify-phase0: ## run the Phase 0 exit-criteria self-check
 	@scripts/verify-phase0.sh
 
-.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-socraticode socraticode-check up-local-free local-llm-pull local-free-check down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration lint gitleaks webhook-test verify-phase0
+.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-socraticode socraticode-check up-local-free local-llm-pull local-free-check up-prod phase3-check worktree-clean down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration lint gitleaks webhook-test verify-phase0

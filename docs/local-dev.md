@@ -29,15 +29,14 @@ Quick dev box without SOPS: `cp .env.example .env && make secrets-dev`.
 ## 3. Platform stack
 
 ```bash
-make up                             # redis + postgres (+ migrations) + webhook-gateway + queue-adapter
-curl -s localhost:8700/readyz       # {"status":"ok","checks":{"redis":true,"task_store":true}}
-make webhook-test                   # sample Issue Hook → {"status":"queued", ...}
-make webhook-test KIND=pipeline     # → pipeline_failed routed to devops
-scripts/send-test-webhook.sh issue --bad-token   # → HTTP 401
-make outbox                         # adapter (DISPATCHER=dryrun) wrote one prompt per task
+cp config/rbac.example.yaml config/rbac.yaml
+make up                             # redis + postgres + gateway + minio + router + 5 adapters
+curl -s localhost:8700/readyz
+make webhook-test                   # → queued → router → stream:<role>
+make phase3-check                   # after agents are up
 ```
 
-Ports (all bound to `127.0.0.1`): gateway 8700, redis 6379, postgres 5432,
+Ports (all bound to `127.0.0.1`): gateway 8700, redis 6379, postgres 5432, MinIO 9000/9001,
 Hermes dashboard 9119, Hermes API 8642 (coordinator) / 8643 (dev-backend).
 
 ## 3b. SocratiCode infra (Phase 2 / DECISION-6)
@@ -65,16 +64,15 @@ no API key). See `docs/phase2-exit-criteria.md`.
 
 ## 3c. Local-free mode (DECISION-15 + DECISION-6)
 
-Runs platform + SocratiCode infra + `inference-ollama` + **coordinator / dev-backend /
-reviewer** on a local LLM (`qwen2.5-coder:7b` by default). No OpenRouter keys for those three.
+Runs platform + router/adapters + MinIO + SocratiCode + `inference-ollama` + **all 6 agents**
+on a shared local LLM (`qwen2.5-coder:7b` by default). No OpenRouter keys required.
 
 ```bash
 # .env: SECRET_HERMES_API_KEY=…  (Telegram optional for API-only drills)
-#       LLM_MODE=local           # optional; make up-local-free forces it for seed
 make secrets-dev
 make up-local-free              # compose -f docker-compose.yml -f docker-compose.local-free.yml
 make local-llm-pull             # first time: pull qwen2.5-coder:7b (needs NVIDIA GPU)
-make local-free-check
+make local-free-check && make phase3-check
 ```
 
 Host ports: inference Ollama `127.0.0.1:11436`, SocratiCode Ollama `11435`, Qdrant `16333`.

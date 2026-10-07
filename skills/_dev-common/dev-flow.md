@@ -35,6 +35,10 @@ metadata:
 10. **Push?** — **ห้าม push เอง** ถ้าต้องการ push/เปิด MR ให้ส่งคำขอ `human-approval-gate` ไปที่ coordinator
     พร้อม payload: `{action: push_work_branch_and_open_mr, branch, commits, diff_stat, test_summary}`
     แล้ว **รอ** — ไม่ทำอะไรต่อจนกว่าจะได้ `approved`; `rejected` / `expired` = จบงานที่ commit
+11. **HANDOFF block (บังคับ)** — ปิดท้ายด้วย YAML ตาม `skills/_shared/README.md`:
+    - หลัง commit สำเร็จ → `to_agent: reviewer`, `reason: review`
+    - `NEEDS_HUMAN` → `to_agent:` (ว่าง), `reason: needs_human`
+    - รอ approval → `reason: awaiting_approval`
 
 ## เงื่อนไขหยุดทันที
 - test command คืน exit code อื่นนอกจาก 0/1 (คำสั่งผิด) → รายงาน ไม่วนลูป

@@ -1,4 +1,4 @@
-"""Redis Streams consumer: ``XREADGROUP`` → enrich → prompt → dispatch → ``XACK``.
+"""Redis Streams consumer (worker mode): ``XREADGROUP`` → enrich → prompt → dispatch → results.
 
 Failure handling follows design §10.3: a message that is not acknowledged is re-claimed
 with ``XAUTOCLAIM`` after ``claim_min_idle_ms``; after ``max_deliveries`` attempts it goes to
@@ -16,8 +16,13 @@ from typing import Any
 from redis.asyncio import Redis
 from redis.exceptions import ResponseError
 
+from . import metrics
+from .artifacts import ArtifactStore, NullArtifactStore
+from .breaker import CircuitBreaker
+from .control import ControlPlane
 from .dispatch import Dispatcher, dumps
 from .gitlab import GitLabClient
+from .handoff import parse_handoff
 from .notify import (
     TelegramNotifier,
     dead_letter_text,
@@ -47,6 +52,9 @@ class Consumer:
         dispatcher: Dispatcher,
         gitlab: GitLabClient,
         notifier: TelegramNotifier,
+        control: ControlPlane | None = None,
+        breaker: CircuitBreaker | None = None,
+        artifacts: ArtifactStore | NullArtifactStore | None = None,
     ) -> None:
         self.s = settings
         self.redis = redis
@@ -54,7 +62,11 @@ class Consumer:
         self.dispatcher = dispatcher
         self.gitlab = gitlab
         self.notifier = notifier
+        self.control = control
+        self.breaker = breaker
+        self.artifacts = artifacts or NullArtifactStore()
         self.processed = 0
+        self.agent_name = settings.role or settings.single_agent_name
 
     # ----------------------------------------------------------------- setup
     async def ensure_group(self) -> None:
@@ -75,6 +87,11 @@ class Consumer:
     # ------------------------------------------------------------------ loop
     async def run_once(self, *, block_ms: int | None = None) -> int:
         """Claim stale messages, then read new ones. Returns the number handled."""
+        if self.control is not None and await self.control.is_paused(self.agent_name):
+            await self.heartbeat()
+            # Sleep lightly by blocking with a short timeout — do not claim new work.
+            return 0
+
         handled = 0
         handled += await self._claim_stale()
         entries = await self.redis.xreadgroup(
@@ -131,8 +148,13 @@ class Consumer:
             )
             return
 
+        if self.control is not None and await self.control.is_safe_mode():
+            constraints = dict(task.get("constraints") or {})
+            constraints["require_approval"] = True
+            task["constraints"] = constraints
+
         if deliveries == 1:
-            await self.store.set_state(task_id, "ASSIGNED", assigned_to=self.s.single_agent_name)
+            await self.store.set_state(task_id, "IN_PROGRESS", assigned_to=self.agent_name)
             await self.store.audit(
                 actor=ACTOR,
                 event="task.assigned",
@@ -141,6 +163,7 @@ class Consumer:
                 attrs={
                     "consumer": self.s.consumer_name,
                     "message_id": message_id,
+                    "worker": self.agent_name,
                     "proposed_worker": task.get("assigned_to"),
                 },
             )
@@ -163,6 +186,39 @@ class Consumer:
         result = await self.dispatcher.dispatch(task, prompt)
 
         if result.ok:
+            handoff = parse_handoff(result.output)
+            artifact_urls: list[str] = []
+            project = str(task.get("project") or "unknown")
+            if result.output:
+                url = await self.artifacts.put_text(
+                    project=project,
+                    task_id=task_id,
+                    name="run-output.md",
+                    body=result.output,
+                    content_type="text/markdown",
+                )
+                if url:
+                    artifact_urls.append(url)
+            if handoff is not None and artifact_urls:
+                arts = list(handoff.get("artifacts") or [])
+                arts.extend(artifact_urls)
+                handoff["artifacts"] = arts
+
+            tokens = 0
+            if result.usage:
+                tokens = int(
+                    result.usage.get("total_tokens")
+                    or result.usage.get("total")
+                    or 0
+                )
+            if self.breaker is not None and tokens:
+                await self.breaker.record_tokens(self.agent_name, tokens)
+
+            status = "completed"
+            detail = result.detail
+            if "waiting_for_approval" in detail or "awaiting_approval" in detail:
+                status = "waiting_for_approval"
+
             await self.store.set_state(task_id, "IN_PROGRESS")
             await self.store.audit(
                 actor=ACTOR,
@@ -174,16 +230,30 @@ class Consumer:
                     "detail": result.detail[:300],
                     "deliveries": deliveries,
                     "prompt_chars": len(prompt),
+                    "run_id": result.run_id,
+                    "tokens": tokens,
                 },
             )
+            metrics.inc("emaw_tasks_dispatched_total")
+            if result.elapsed_seconds:
+                metrics.observe_run_seconds(result.elapsed_seconds)
+            if tokens:
+                metrics.observe_tokens(tokens)
+
             await self.redis.xadd(
                 self.s.results_stream,
                 {
                     "task_id": task_id,
                     "trace_id": trace_id or "",
-                    "status": "dispatched",
+                    "status": status,
                     "dispatcher": self.dispatcher.name,
                     "detail": result.detail[:500],
+                    "from_agent": self.agent_name,
+                    "project": project,
+                    "handoff": dumps(handoff) if handoff else "",
+                    "usage": dumps(result.usage) if result.usage else "",
+                    "envelope": dumps(task),
+                    "output": (result.output or "")[:8000],
                 },
             )
             await self.redis.xack(self.s.task_stream, self.s.consumer_group, message_id)
@@ -242,5 +312,20 @@ class Consumer:
             task_id=task_id,
             attrs={"reason": reason[:300], "dead_letter": True},
         )
+        # Also publish to results so the router can record / trip the breaker
+        await self.redis.xadd(
+            self.s.results_stream,
+            {
+                "task_id": task_id,
+                "trace_id": task.get("trace_id") or "",
+                "status": "failed",
+                "detail": reason[:500],
+                "from_agent": self.agent_name,
+                "project": task.get("project") or "",
+            },
+        )
+        if self.breaker is not None:
+            await self.breaker.record_failure(task_id)
+        metrics.inc("emaw_tasks_failed_total")
         await self.notifier.send(dead_letter_text(task, reason))
         log.error("dead-lettered %s: %s", task_id, reason[:200])

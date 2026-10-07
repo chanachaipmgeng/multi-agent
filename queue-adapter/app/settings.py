@@ -25,6 +25,20 @@ class Settings(BaseSettings):
 
     log_level: str = Field(default="info", alias="LOG_LEVEL")
 
+    # --- mode (Phase 3) ------------------------------------------------------
+    # worker → consume stream:<role>, dispatch to Hermes for that role
+    # router → consume stream:tasks, fan-out to stream:<role>; consume stream:results
+    mode: Literal["worker", "router"] = Field(default="worker", alias="MODE")
+    role: str = Field(default="hermes-single", alias="ROLE")
+    projects_file: str | None = Field(default=None, alias="PROJECTS_FILE")
+    control_prefix: str = Field(default="emaw:control", alias="CONTROL_PREFIX")
+    metrics_port: int = Field(default=9100, alias="METRICS_PORT")
+    token_budget_per_agent_hour: int = Field(
+        default=500_000, alias="TOKEN_BUDGET_PER_AGENT_HOUR"
+    )
+    fail_threshold: int = Field(default=3, alias="FAIL_THRESHOLD")
+    fail_window_seconds: int = Field(default=900, alias="FAIL_WINDOW_SECONDS")
+
     # --- queue ---------------------------------------------------------------
     redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
     task_stream: str = Field(default="stream:tasks", alias="TASK_STREAM")
@@ -37,16 +51,21 @@ class Settings(BaseSettings):
     max_deliveries: int = Field(default=3, alias="MAX_DELIVERIES")  # 1 + 2 retries (§10.3)
     heartbeat_key: str = "emaw:heartbeat:queue-adapter"
     heartbeat_file: str = Field(default="/tmp/queue-adapter.heartbeat", alias="HEARTBEAT_FILE")
+    stream_maxlen: int = Field(default=10_000, alias="STREAM_MAXLEN")
 
     # --- task store (optional) ----------------------------------------------
     database_url: str | None = Field(default=None, alias="DATABASE_URL")
     pg_password_file: str | None = Field(default=None, alias="PG_PASSWORD_FILE")
 
+    # --- MinIO artifacts (optional) -----------------------------------------
+    minio_endpoint: str | None = Field(default=None, alias="MINIO_ENDPOINT")
+    minio_access_key: str | None = Field(default=None, alias="MINIO_ACCESS_KEY")
+    minio_secret_key: str | None = Field(default=None, alias="MINIO_SECRET_KEY")
+    minio_secret_key_file: str | None = Field(default=None, alias="MINIO_SECRET_KEY_FILE")
+    minio_bucket: str = Field(default="emaw-artifacts", alias="MINIO_BUCKET")
+    minio_secure: bool = Field(default=False, alias="MINIO_SECURE")
+
     # --- dispatch --------------------------------------------------------------
-    # dryrun      → write the prompt to OUTBOX_DIR and log it (no Hermes needed)
-    # hermes_api  → POST /v1/runs on Hermes API server :8642 (preferred, DECISION-1)
-    # http        → POST {task, prompt} to HERMES_HTTP_URL (legacy shim)
-    # hermes_cli  → hermes -p {agent} chat --oneshot -Q --query-file {prompt_file} -s {skill}
     dispatcher: Literal["dryrun", "http", "hermes_cli", "hermes_api"] = Field(
         default="dryrun", alias="DISPATCHER"
     )
@@ -65,7 +84,7 @@ class Settings(BaseSettings):
         alias="HERMES_CLI_TEMPLATE",
     )
     dispatch_timeout_seconds: int = Field(default=1_800, alias="DISPATCH_TIMEOUT_SECONDS")
-    # Phase 1–2: one Hermes instance handles every role. Phase 3: one adapter per role.
+    # Phase 1–2 compat: one Hermes instance. Phase 3 workers use ROLE instead.
     single_agent_name: str = Field(default="hermes-single", alias="SINGLE_AGENT_NAME")
 
     # --- enrichment (GitLab read_api) -----------------------------------------
@@ -82,6 +101,8 @@ class Settings(BaseSettings):
     def _resolve(self) -> Settings:
         if not self.gitlab_token:
             self.gitlab_token = _read_secret_file(self.gitlab_token_file)
+        if not self.minio_secret_key:
+            self.minio_secret_key = _read_secret_file(self.minio_secret_key_file)
         if self.database_url and "${PG_PASSWORD}" in self.database_url:
             pw = _read_secret_file(self.pg_password_file)
             if pw is None:
@@ -93,6 +114,20 @@ class Settings(BaseSettings):
             raise ValueError("DISPATCHER=http requires HERMES_HTTP_URL")
         if self.dispatcher == "hermes_api" and not self.hermes_api_url:
             raise ValueError("DISPATCHER=hermes_api requires HERMES_API_URL")
+        # Phase 3 worker defaults: consume stream:<role> with matching consumer group
+        if self.mode == "worker" and self.role and self.role != "hermes-single":
+            if self.task_stream == "stream:tasks":
+                self.task_stream = f"stream:{self.role}"
+            if self.consumer_group in {"hermes-single", "router"}:
+                self.consumer_group = f"adapter-{self.role}"
+            if self.single_agent_name == "hermes-single":
+                self.single_agent_name = self.role
+        if self.mode == "router":
+            if self.consumer_group == "hermes-single":
+                self.consumer_group = "router"
+            self.heartbeat_key = "emaw:heartbeat:router"
+        else:
+            self.heartbeat_key = f"emaw:heartbeat:adapter-{self.role}"
         return self
 
     @property
@@ -106,3 +141,6 @@ class Settings(BaseSettings):
     @property
     def hermes_api_token(self) -> str | None:
         return _read_secret_file(self.hermes_api_key_file)
+
+    def role_stream(self, role: str) -> str:
+        return f"stream:{role}"

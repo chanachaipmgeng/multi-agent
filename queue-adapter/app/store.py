@@ -1,4 +1,4 @@
-"""Task-state updates and audit events written by the adapter."""
+"""Task-state updates, handoffs, and audit events written by the adapter."""
 
 from __future__ import annotations
 
@@ -18,6 +18,21 @@ class StateStore(Protocol):
         *,
         assigned_to: str | None = None,
         result: dict[str, Any] | None = None,
+    ) -> None: ...
+    async def get_task(self, task_id: str) -> dict[str, Any] | None: ...
+    async def add_handoff(
+        self,
+        *,
+        task_id: str,
+        from_agent: str,
+        to_agent: str,
+        reason: str | None = None,
+        worktree_path: str | None = None,
+        branch: str | None = None,
+        summary: str | None = None,
+        open_questions: str | None = None,
+        artifacts: list[Any] | None = None,
+        token_spent: int | None = None,
     ) -> None: ...
     async def audit(
         self,
@@ -40,6 +55,12 @@ class NullStateStore:
     async def set_state(self, task_id, state, *, assigned_to=None, result=None) -> None:
         return None
 
+    async def get_task(self, task_id: str) -> dict[str, Any] | None:
+        return None
+
+    async def add_handoff(self, **_: Any) -> None:
+        return None
+
     async def audit(self, **_: Any) -> None:
         return None
 
@@ -47,6 +68,7 @@ class NullStateStore:
 @dataclass
 class MemoryStateStore:
     states: dict[str, dict[str, Any]] = field(default_factory=dict)
+    handoffs: list[dict[str, Any]] = field(default_factory=list)
     audit_events: list[dict[str, Any]] = field(default_factory=list)
 
     async def connect(self) -> None:
@@ -62,6 +84,42 @@ class MemoryStateStore:
             row["assigned_to"] = assigned_to
         if result is not None:
             row["result"] = result
+
+    async def get_task(self, task_id: str) -> dict[str, Any] | None:
+        row = self.states.get(task_id)
+        if row is None:
+            return None
+        return {"task_id": task_id, **row}
+
+    async def add_handoff(
+        self,
+        *,
+        task_id: str,
+        from_agent: str,
+        to_agent: str,
+        reason: str | None = None,
+        worktree_path: str | None = None,
+        branch: str | None = None,
+        summary: str | None = None,
+        open_questions: str | None = None,
+        artifacts: list[Any] | None = None,
+        token_spent: int | None = None,
+    ) -> None:
+        self.handoffs.append(
+            {
+                "task_id": task_id,
+                "from_agent": from_agent,
+                "to_agent": to_agent,
+                "reason": reason,
+                "worktree_path": worktree_path,
+                "branch": branch,
+                "summary": summary,
+                "open_questions": open_questions,
+                "artifacts": artifacts or [],
+                "token_spent": token_spent,
+                "created_at": datetime.now(UTC),
+            }
+        )
 
     async def audit(self, *, actor, event, trace_id, task_id, attrs=None) -> None:
         self.audit_events.append(
@@ -106,6 +164,53 @@ class PostgresStateStore:
                 state,
                 assigned_to,
                 json.dumps(result, default=str) if result else None,
+            )
+
+    async def get_task(self, task_id: str) -> dict[str, Any] | None:
+        assert self._pool is not None
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT task_id, trace_id, type, project_key, state, assigned_to, "
+                "skill, result FROM tasks WHERE task_id = $1",
+                task_id,
+            )
+        if row is None:
+            return None
+        return dict(row)
+
+    async def add_handoff(
+        self,
+        *,
+        task_id: str,
+        from_agent: str,
+        to_agent: str,
+        reason: str | None = None,
+        worktree_path: str | None = None,
+        branch: str | None = None,
+        summary: str | None = None,
+        open_questions: str | None = None,
+        artifacts: list[Any] | None = None,
+        token_spent: int | None = None,
+    ) -> None:
+        assert self._pool is not None
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO handoffs
+                  (task_id, from_agent, to_agent, reason, worktree_path, branch,
+                   summary, open_questions, artifacts, token_spent)
+                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)
+                """,
+                task_id,
+                from_agent,
+                to_agent,
+                reason,
+                worktree_path,
+                branch,
+                summary,
+                open_questions,
+                json.dumps(artifacts or [], default=str),
+                token_spent,
             )
 
     async def audit(self, *, actor, event, trace_id, task_id, attrs=None) -> None:

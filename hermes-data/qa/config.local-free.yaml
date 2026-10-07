@@ -1,0 +1,49 @@
+# Hermes profile: qa — local-free override (DECISION-15)
+
+model:
+  provider: custom
+  base_url: http://inference-ollama:11434/v1
+  default: qwen2.5-coder:7b
+
+fallback_providers:
+  - provider: custom
+    base_url: http://inference-ollama:11434/v1
+    model: qwen2.5-coder:7b
+
+terminal:
+  backend: local
+  cwd: /workspace
+  timeout: 1200
+
+approvals:
+  mode: smart
+  deny:
+    - "git push* main*"
+    - "git push* master*"
+    - "git push* release/*"
+    - "docker system prune*"
+    - "*DROP TABLE*"
+    - "rm -rf /*"
+    - "rm -rf /"
+
+worktree: true
+worktree_sync: true
+
+skills:
+  auto_load:
+    - write-e2e
+    - smoke-test
+
+database:
+  journal_mode: delete
+
+emaw:
+  agent_md: /opt/data/AGENT.md
+  platform_policy: /config/policies/platform-policy.yaml
+  projects: /config/projects.yaml
+  allowed_paths: ["e2e/**", "tests/**", "**/*.spec.ts", "**/test_*.py", "playwright.config.*"]
+  inbox_stream: stream:qa
+  results_stream: stream:results
+  token_budget_per_task: 200000
+  self_heal_limit: 3
+  e2e_port_range: "3001-3010"

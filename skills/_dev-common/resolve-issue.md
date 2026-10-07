@@ -42,6 +42,10 @@ metadata:
     `-o merge_request.title="<mr_title>" -o merge_request.description="<mr_description>"` แล้วอ่าน URL ของ MR จาก output ของ push
 12. **แจ้งผล** — `✅ Issue #<iid> เสร็จ · MR !<iid> <url> · test <n> passed · trace <trace_id>` → task `DONE`
     (GitLab จะปิด Issue เองเมื่อ MR ถูก merge โดยมนุษย์)
+13. **HANDOFF block (บังคับ)** — ตาม `skills/_shared/README.md`:
+    - หลัง commit ก่อน push → `to_agent: reviewer`, `reason: review`
+    - หลัง MR เปิดแล้ว / ไม่ต้องรีวิวเพิ่ม → `to_agent:` (ว่าง), `reason: done`
+    - `NEEDS_HUMAN` → `reason: needs_human`
 
 ## ห้าม
 - push โดยไม่ได้รับ `approved` จาก gate; push ไป `main`/`release/*` ทุกกรณี

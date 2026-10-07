@@ -17,4 +17,5 @@ workspace/
 
 Every project must have, at its root: `.agentignore`, `.socraticodeignore`, `project-standards.md`
 and a test command that returns exit 0/1 correctly (checklist #3, #5, #7). Stale worktrees older
-than 7 days are removed by the cleanup job (Phase 2).
+than 7 days are removed by `make worktree-clean` (`scripts/worktree-cleanup.sh`, D2.4).
+Suggested cron: `0 4 * * * cd /path/to/emaw && make worktree-clean`.

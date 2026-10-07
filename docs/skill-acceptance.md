@@ -23,10 +23,14 @@ See also [`phase2-exit-criteria.md`](phase2-exit-criteria.md).
 | `human-approval-gate` | push request → n / timeout / y | | | Phase 0 HITL | |
 | `resolve-issue` | Issue `agent-ready` → MR | | | Phase 1 | |
 | `incident-triage` | failed job → triage ≤ 2 min | | | Phase 1 | |
-| `switch-context` | `[Frontend]` / `[Backend]` tags → cwd + confirm | | | Optional if using multi-profile compose | |
+| `switch-context` | (deprecated Phase 3) | | | prefer `route-task` | |
+| `route-task` | `[Backend] …` → queued task + trace | | | Phase 3 | |
+| `status-report` | list open tasks | | | Phase 3 | |
+| `pause-resume` / `safe-mode` | admin control keys | | | Phase 3 / E11 | |
 | `review-with-socraticode` | diff-scoped `codebase_*` review + handoff patch | | | MCP enabled (local AGPL); record live runs | |
 | `deep-review` | `codebase_impact` + `codebase_graph_*` on diff symbols | | | MCP enabled; record live runs | |
-| `write-e2e` / `smoke-test` | Playwright on worktree :3001 | | | Phase 3 | |
+| `fix-pipeline` / `deploy-prod` | CI hotfix / prod deploy HITL | | | Phase 3 | |
+| `write-e2e` / `smoke-test` | Playwright / smoke on worktree `:e2e_port` | | | Phase 3 | |
 
 ## Switch-context vs profiles (Phase 2 review)
 

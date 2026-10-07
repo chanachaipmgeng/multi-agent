@@ -1,8 +1,11 @@
-# Enterprise Multi-Agent Workspace — dev compose (Phase 0 foundation, grows into §A.1)
+# Enterprise Multi-Agent Workspace — Phase 3 multi-agent compose (design §A.1 / DECISION-16)
 #
-# Default services (plain `docker compose up -d`):  redis, postgres, webhook-gateway, queue-adapter
+# Default services (plain `docker compose up -d`):
+#   redis, postgres, webhook-gateway, router, minio
+#   + adapter-{dev-frontend,dev-backend,reviewer,qa,devops}
 # Profiles:
 #   agents      → 6 Hermes profiles as separate containers (coordinator + 5 workers)
+#   single      → legacy single queue-adapter (Phase 1–2 host install; mutually exclusive w/ router)
 #   ingress     → cloudflared Named Tunnel connector (needs secrets/tunnel_token)
 #   onprem-llm  → Ollama for repos classified confidential/restricted (DECISION-3)
 #   socraticode → Ollama (embeddings) + Qdrant for SocratiCode MCP (DECISION-6 / Phase 2)
@@ -32,6 +35,25 @@ x-hermes-common: &hermes-common
     redis: { condition: service_healthy }
     postgres: { condition: service_healthy }
   profiles: ["agents"]
+
+# Shared build/image/security for router + per-role workers (DECISION-16).
+# Each service overrides `environment:` fully (Compose cannot merge YAML lists).
+x-adapter-common: &adapter-common
+  build: ./queue-adapter
+  image: emaw/queue-adapter:dev
+  secrets: [pg_password, gitlab_token_readonly, telegram_token, hermes_api_key, minio_agent_secret]
+  volumes:
+    - adapter-outbox:/var/lib/queue-adapter
+    - ./config:/config:ro
+  networks: [control, workers]
+  depends_on:
+    redis: { condition: service_healthy }
+    postgres: { condition: service_healthy }
+  read_only: true
+  tmpfs: ["/tmp"]
+  cap_drop: ["ALL"]
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
 
 services:
   # ------------------------------------------------------------ platform
@@ -78,9 +100,12 @@ services:
       - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
       - PG_PASSWORD_FILE=/run/secrets/pg_password
       - PROJECTS_FILE=/config/projects.yaml
+      - RBAC_FILE=/config/rbac.yaml
       - GITLAB_WEBHOOK_SECRET_FILE=/run/secrets/gitlab_webhook_secret
+      - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
       - TASK_STREAM=stream:tasks
-    secrets: [gitlab_webhook_secret, pg_password]
+      - CONTROL_PREFIX=emaw:control
+    secrets: [gitlab_webhook_secret, pg_password, hermes_api_key]
     volumes: ["./config:/config:ro"]
     ports: ["127.0.0.1:${GATEWAY_PORT:-8700}:8700"]
     networks: [edge, control]
@@ -98,37 +123,230 @@ services:
       retries: 3
     restart: unless-stopped
 
-  queue-adapter:
-    # Phase 1–2: single adapter feeding the one Hermes agent. Phase 3: one per role (stream:<role>).
-    build: ./queue-adapter
-    image: emaw/queue-adapter:dev
+  # ---------------------------------------------------- Phase 3 adapters
+  router:
+    <<: *adapter-common
+    container_name: emaw-router
+    secrets: [pg_password, gitlab_token_readonly, telegram_token, hermes_api_key]
     environment:
       - LOG_LEVEL=${ADAPTER_LOG_LEVEL:-info}
       - REDIS_URL=redis://redis:6379/0
+      - MODE=router
+      - ROLE=router
       - TASK_STREAM=stream:tasks
-      - CONSUMER_GROUP=hermes-single
+      - RESULTS_STREAM=stream:results
+      - DEAD_LETTER_STREAM=stream:dead-letter
+      - CONSUMER_GROUP=router
       - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
       - PG_PASSWORD_FILE=/run/secrets/pg_password
-      - DISPATCHER=${ADAPTER_DISPATCHER:-dryrun}          # dryrun | hermes_api | hermes_cli | http
-      - HERMES_API_URL=${HERMES_API_URL:-http://dev-backend:8642}
+      - DISPATCHER=dryrun
+      - PROJECTS_FILE=/config/projects.yaml
+      - CONTROL_PREFIX=emaw:control
+      - METRICS_PORT=9100
+      - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
       - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
-      - HERMES_HTTP_URL=${HERMES_HTTP_URL:-}
-      - HERMES_CLI_TEMPLATE=${HERMES_CLI_TEMPLATE:-hermes -p {agent} chat --oneshot -Q --query-file {prompt_file} -s {skill}}
+      - OUTBOX_DIR=/var/lib/queue-adapter/outbox
+
+  adapter-dev-frontend:
+    <<: *adapter-common
+    container_name: emaw-adapter-dev-frontend
+    environment:
+      - LOG_LEVEL=${ADAPTER_LOG_LEVEL:-info}
+      - REDIS_URL=redis://redis:6379/0
+      - MODE=worker
+      - ROLE=dev-frontend
+      - TASK_STREAM=stream:dev-frontend
+      - CONSUMER_GROUP=adapter-dev-frontend
+      - RESULTS_STREAM=stream:results
+      - DEAD_LETTER_STREAM=stream:dead-letter
+      - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
+      - PG_PASSWORD_FILE=/run/secrets/pg_password
+      - DISPATCHER=${ADAPTER_DISPATCHER:-dryrun}
+      - HERMES_API_URL=http://dev-frontend:8642
+      - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
       - OUTBOX_DIR=/var/lib/queue-adapter/outbox
       - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
       - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
       - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
-    secrets: [pg_password, gitlab_token_readonly, telegram_token, hermes_api_key]
-    volumes: ["adapter-outbox:/var/lib/queue-adapter"]
+      - CONTROL_PREFIX=emaw:control
+      - METRICS_PORT=9100
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_agent_secret
+      - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
+      - PROJECTS_FILE=/config/projects.yaml
+
+  adapter-dev-backend:
+    <<: *adapter-common
+    container_name: emaw-adapter-dev-backend
+    environment:
+      - LOG_LEVEL=${ADAPTER_LOG_LEVEL:-info}
+      - REDIS_URL=redis://redis:6379/0
+      - MODE=worker
+      - ROLE=dev-backend
+      - TASK_STREAM=stream:dev-backend
+      - CONSUMER_GROUP=adapter-dev-backend
+      - RESULTS_STREAM=stream:results
+      - DEAD_LETTER_STREAM=stream:dead-letter
+      - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
+      - PG_PASSWORD_FILE=/run/secrets/pg_password
+      - DISPATCHER=${ADAPTER_DISPATCHER:-dryrun}
+      - HERMES_API_URL=http://dev-backend:8642
+      - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
+      - OUTBOX_DIR=/var/lib/queue-adapter/outbox
+      - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
+      - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - CONTROL_PREFIX=emaw:control
+      - METRICS_PORT=9100
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_agent_secret
+      - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
+      - PROJECTS_FILE=/config/projects.yaml
+
+  adapter-reviewer:
+    <<: *adapter-common
+    container_name: emaw-adapter-reviewer
+    environment:
+      - LOG_LEVEL=${ADAPTER_LOG_LEVEL:-info}
+      - REDIS_URL=redis://redis:6379/0
+      - MODE=worker
+      - ROLE=reviewer
+      - TASK_STREAM=stream:reviewer
+      - CONSUMER_GROUP=adapter-reviewer
+      - RESULTS_STREAM=stream:results
+      - DEAD_LETTER_STREAM=stream:dead-letter
+      - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
+      - PG_PASSWORD_FILE=/run/secrets/pg_password
+      - DISPATCHER=${ADAPTER_DISPATCHER:-dryrun}
+      - HERMES_API_URL=http://reviewer:8642
+      - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
+      - OUTBOX_DIR=/var/lib/queue-adapter/outbox
+      - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
+      - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - CONTROL_PREFIX=emaw:control
+      - METRICS_PORT=9100
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_agent_secret
+      - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
+      - PROJECTS_FILE=/config/projects.yaml
+
+  adapter-qa:
+    <<: *adapter-common
+    container_name: emaw-adapter-qa
+    environment:
+      - LOG_LEVEL=${ADAPTER_LOG_LEVEL:-info}
+      - REDIS_URL=redis://redis:6379/0
+      - MODE=worker
+      - ROLE=qa
+      - TASK_STREAM=stream:qa
+      - CONSUMER_GROUP=adapter-qa
+      - RESULTS_STREAM=stream:results
+      - DEAD_LETTER_STREAM=stream:dead-letter
+      - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
+      - PG_PASSWORD_FILE=/run/secrets/pg_password
+      - DISPATCHER=${ADAPTER_DISPATCHER:-dryrun}
+      - HERMES_API_URL=http://qa:8642
+      - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
+      - OUTBOX_DIR=/var/lib/queue-adapter/outbox
+      - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
+      - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - CONTROL_PREFIX=emaw:control
+      - METRICS_PORT=9100
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_agent_secret
+      - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
+      - PROJECTS_FILE=/config/projects.yaml
+
+  adapter-devops:
+    <<: *adapter-common
+    container_name: emaw-adapter-devops
+    environment:
+      - LOG_LEVEL=${ADAPTER_LOG_LEVEL:-info}
+      - REDIS_URL=redis://redis:6379/0
+      - MODE=worker
+      - ROLE=devops
+      - TASK_STREAM=stream:devops
+      - CONSUMER_GROUP=adapter-devops
+      - RESULTS_STREAM=stream:results
+      - DEAD_LETTER_STREAM=stream:dead-letter
+      - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
+      - PG_PASSWORD_FILE=/run/secrets/pg_password
+      - DISPATCHER=${ADAPTER_DISPATCHER:-dryrun}
+      - HERMES_API_URL=http://devops:8642
+      - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
+      - OUTBOX_DIR=/var/lib/queue-adapter/outbox
+      - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
+      - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - CONTROL_PREFIX=emaw:control
+      - METRICS_PORT=9100
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
+      - MINIO_SECRET_KEY_FILE=/run/secrets/minio_agent_secret
+      - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
+      - PROJECTS_FILE=/config/projects.yaml
+
+  # Phase 1–2 compat: single adapter (profile `single` — do not combine with router workers)
+  queue-adapter:
+    <<: *adapter-common
+    profiles: ["single"]
+    environment:
+      - LOG_LEVEL=${ADAPTER_LOG_LEVEL:-info}
+      - REDIS_URL=redis://redis:6379/0
+      - MODE=worker
+      - ROLE=hermes-single
+      - TASK_STREAM=stream:tasks
+      - CONSUMER_GROUP=hermes-single
+      - RESULTS_STREAM=stream:results
+      - DEAD_LETTER_STREAM=stream:dead-letter
+      - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
+      - PG_PASSWORD_FILE=/run/secrets/pg_password
+      - DISPATCHER=${ADAPTER_DISPATCHER:-dryrun}
+      - HERMES_API_URL=${HERMES_API_URL:-http://dev-backend:8642}
+      - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
+      - SINGLE_AGENT_NAME=hermes-single
+      - OUTBOX_DIR=/var/lib/queue-adapter/outbox
+      - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
+      - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - CONTROL_PREFIX=emaw:control
+      - METRICS_PORT=9100
+      - PROJECTS_FILE=/config/projects.yaml
+
+  minio:
+    # MinIO has no *_FILE env support — password comes from .env / compose interpolation.
+    # Agent write key lives in secrets/minio_agent_secret (see scripts/minio-init.sh).
+    image: minio/minio:latest
+    container_name: emaw-minio
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-emaw}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-emaw-minio-dev-change-me}
+    volumes: ["minio-data:/data"]
+    ports:
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     networks: [control, workers]
-    depends_on:
-      redis: { condition: service_healthy }
-      postgres: { condition: service_healthy }
-    read_only: true
-    tmpfs: ["/tmp"]
-    cap_drop: ["ALL"]
-    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   cloudflared:
@@ -182,6 +400,14 @@ services:
     <<: *hermes-common
     container_name: emaw-dev-frontend
     command: ["gateway", "run"]
+    environment:
+      - TZ=${TZ:-Asia/Bangkok}
+      - HERMES_LOG_LEVEL=${HERMES_LOG_LEVEL:-info}
+      - HERMES_HOME=/opt/data
+      - API_SERVER_ENABLED=true
+      - API_SERVER_HOST=0.0.0.0
+      - API_SERVER_PORT=8642
+      - API_SERVER_KEY_FILE=/run/secrets/hermes_api_key
     volumes:
       - hermes-dev-frontend-data:/opt/data
       - ./hermes-data/dev-frontend/config.yaml:/opt/data/config.yaml:ro
@@ -228,6 +454,14 @@ services:
     <<: *hermes-common
     container_name: emaw-reviewer
     command: ["gateway", "run"]
+    environment:
+      - TZ=${TZ:-Asia/Bangkok}
+      - HERMES_LOG_LEVEL=${HERMES_LOG_LEVEL:-info}
+      - HERMES_HOME=/opt/data
+      - API_SERVER_ENABLED=true
+      - API_SERVER_HOST=0.0.0.0
+      - API_SERVER_PORT=8642
+      - API_SERVER_KEY_FILE=/run/secrets/hermes_api_key
     volumes:
       - hermes-reviewer-data:/opt/data
       - ./hermes-data/reviewer/config.yaml:/opt/data/config.yaml:ro
@@ -244,6 +478,14 @@ services:
     <<: *hermes-common
     container_name: emaw-devops
     command: ["gateway", "run"]
+    environment:
+      - TZ=${TZ:-Asia/Bangkok}
+      - HERMES_LOG_LEVEL=${HERMES_LOG_LEVEL:-info}
+      - HERMES_HOME=/opt/data
+      - API_SERVER_ENABLED=true
+      - API_SERVER_HOST=0.0.0.0
+      - API_SERVER_PORT=8642
+      - API_SERVER_KEY_FILE=/run/secrets/hermes_api_key
     volumes:
       - hermes-devops-data:/opt/data
       - ./hermes-data/devops/config.yaml:/opt/data/config.yaml:ro
@@ -260,6 +502,14 @@ services:
     <<: *hermes-common
     container_name: emaw-qa
     command: ["gateway", "run"]
+    environment:
+      - TZ=${TZ:-Asia/Bangkok}
+      - HERMES_LOG_LEVEL=${HERMES_LOG_LEVEL:-info}
+      - HERMES_HOME=/opt/data
+      - API_SERVER_ENABLED=true
+      - API_SERVER_HOST=0.0.0.0
+      - API_SERVER_PORT=8642
+      - API_SERVER_KEY_FILE=/run/secrets/hermes_api_key
     volumes:
       - hermes-qa-data:/opt/data
       - ./hermes-data/qa/config.yaml:/opt/data/config.yaml:ro
@@ -337,6 +587,8 @@ secrets:
   gitlab_token_ci:       { file: ./secrets/gitlab_token_ci }
   gitlab_token_qa:       { file: ./secrets/gitlab_token_qa }
   hermes_api_key:        { file: ./secrets/hermes_api_key }
+  minio_agent_secret:    { file: ./secrets/minio_agent_secret }
+  minio_root_password:   { file: ./secrets/minio_root_password }
 
 networks:
   edge: {}
@@ -348,6 +600,7 @@ volumes:
   redis-data: {}
   pg-data: {}
   adapter-outbox: {}
+  minio-data: {}
   ollama-data: {}
   # Stable external names — reuse standalone install data; `make up-socraticode`
   # creates them if missing so a fresh pack still works.

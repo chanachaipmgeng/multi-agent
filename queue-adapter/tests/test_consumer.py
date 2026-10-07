@@ -36,9 +36,10 @@ async def test_issue_task_is_dispatched_acked_and_recorded(
     assert store.states[task["task_id"]] == {"state": "IN_PROGRESS", "assigned_to": "hermes-single"}
     assert [e["event"] for e in store.audit_events] == ["task.assigned", "task.dispatched"]
     results = await fake_redis.xrange(settings.results_stream)
-    assert len(results) == 1 and results[0][1][b"status"] == b"dispatched"
+    assert len(results) == 1 and results[0][1][b"status"] == b"completed"
+    assert results[0][1][b"from_agent"] == b"hermes-single"
     outbox = list(Path(settings.outbox_dir).glob("*.prompt.md"))
-    assert len(outbox) == 1 and "run skill resolve-issue" in outbox[0].read_text()
+    assert len(outbox) == 1 and "run skill resolve-issue" in outbox[0].read_text(encoding="utf-8")
     assert telegram_calls and "รับงาน t-20261007-abc123" in telegram_calls[0]["text"]
     assert Path(settings.heartbeat_file).exists()
     assert await fake_redis.get(settings.heartbeat_key) is not None
@@ -56,10 +57,11 @@ async def test_job_failed_task_gets_trace_in_prompt(consumer, fake_redis, settin
     await consumer.ensure_group()
     await enqueue(fake_redis, settings, make_job_failed_task())
     await consumer.run_once(block_ms=1)
-    prompt = next(Path(settings.outbox_dir).glob("*.prompt.md")).read_text()
+    prompt = next(Path(settings.outbox_dir).glob("*.prompt.md")).read_text(encoding="utf-8")
     assert "run skill incident-triage" in prompt
     assert "JOB TRACE (redacted, tail)" in prompt
     assert "SuperSecretValue" not in prompt
+    assert "HANDOFF:" in prompt
 
 
 async def test_retryable_failure_stays_pending_then_dead_letters(
@@ -78,11 +80,11 @@ async def test_retryable_failure_stays_pending_then_dead_letters(
     task = make_task()
     await enqueue(fake_redis, settings, task)
 
-    # delivery 1 — fails, stays pending (not acked)
+    # delivery 1 — fails, stays pending (not acked); worker marks IN_PROGRESS
     await consumer.run_once(block_ms=1)
     pending = await _pending(fake_redis, settings)
     assert len(pending) == 1 and pending[0]["times_delivered"] == 1
-    assert store.states[task["task_id"]]["state"] == "ASSIGNED"
+    assert store.states[task["task_id"]]["state"] == "IN_PROGRESS"
     assert any("ไม่สำเร็จ" in c["text"] for c in telegram_calls)
 
     # delivery 2 — re-claimed via XAUTOCLAIM (min idle 0 in tests), fails again
@@ -265,7 +267,11 @@ async def test_hermes_cli_missing_binary_is_not_retryable(tmp_path) -> None:
 
 
 async def test_hermes_cli_runs_real_command(tmp_path) -> None:
-    d = HermesCliDispatcher("cat {prompt_file}", outbox_dir=str(tmp_path))
+    # Cross-platform: python reads the prompt file (cat is unavailable on Windows).
+    d = HermesCliDispatcher(
+        "python -c \"import pathlib,sys; print(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))\" {prompt_file}",
+        outbox_dir=str(tmp_path),
+    )
     result = await d.dispatch(make_task(), "hello from prompt")
     assert result.ok and "hello from prompt" in result.detail
 
@@ -273,4 +279,4 @@ async def test_hermes_cli_runs_real_command(tmp_path) -> None:
 async def test_dryrun_writes_file(tmp_path) -> None:
     d = DryRunDispatcher(str(tmp_path / "out"))
     result = await d.dispatch(make_task(), "x")
-    assert result.ok and Path(result.detail).read_text() == "x"
+    assert result.ok and Path(result.detail).read_text(encoding="utf-8") == "x"

@@ -13,7 +13,7 @@ Legend: ✅ in repo & verified · 🧪 in repo, needs real environment · ☐ ma
 | D2.4 | Skill `switch-context` for single-agent host | `skills/coordinator/switch-context.md` | ✅ procedure · ☐ optional rehearse |
 | D2.5 | Reviewer MCP wiring (local AGPL, no API key) | `hermes-data/reviewer/config.yaml` `mcp_servers.socraticode` enabled | ✅ wired · 🧪 exercise on sandbox-smoke |
 | D2.6 | Skill acceptance log (≥3 clean runs / skill before promote) | `docs/skill-acceptance.md` | ☐ fill after live drills |
-| D2.7 | Local-free LLM path (optional) | `docker-compose.local-free.yml`, `make up-local-free` (DECISION-15) | ✅ |
+| D2.7 | Local-free LLM path (optional; Phase 3 = all 6 agents) | `docker-compose.local-free.yml`, `make up-local-free` (DECISION-15) | ✅ |
 
 ## Checklist items in scope
 
@@ -46,11 +46,12 @@ Legend: ✅ in repo & verified · 🧪 in repo, needs real environment · ☐ ma
 ## What Phase 2 does *not* include
 
 - Permanent Cloudflare ingress (Phase 1 / DECISION-5)
-- Playwright e2e / `write-e2e` (Phase 3)
+- Multi-agent fan-out / RBAC / kill switch / MinIO (Phase 3 — see [`phase3-exit-criteria.md`](phase3-exit-criteria.md))
 - Commercial SocratiCode license (not required for local MCP)
 
 ## After this prep — Phase 0 live gate (ops)
 
 **Before treating the platform as exited Phase 0**, run the ops gate in
 [`phase0-runbook.md`](phase0-runbook.md) (Track B). For a free local LLM drill use
-`make up-local-free` instead of OpenRouter keys (DECISION-15).
+`make up-local-free` instead of OpenRouter keys (DECISION-15). Phase 3 code is in-tree;
+live multi-agent drills still need DECISION-8/11.

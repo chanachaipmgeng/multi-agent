@@ -18,9 +18,11 @@ commands:
   dev-flow:            { roles: [developer, maintainer] }
   resolve-issue:       { roles: [developer, maintainer] }
   review-code:         { roles: [developer, maintainer] }
+  route-task:          { roles: [developer, maintainer, admin] }
   status-report:       { roles: [viewer, developer, maintainer, approver, admin] }
-  deploy-prod:         { roles: [approver] }
-  approve-push:        { roles: [developer, maintainer] }
-  approve-migration:   { roles: [approver] }
+  deploy-prod:         { roles: [approver, admin] }
+  approve-push:        { roles: [developer, maintainer, admin] }
+  approve-migration:   { roles: [approver, admin] }
   pause:               { roles: [admin] }
+  resume:              { roles: [admin] }
   safe-mode:           { roles: [admin] }

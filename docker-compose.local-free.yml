@@ -5,8 +5,8 @@
 #     --profile agents --profile socraticode --profile onprem-llm up -d …
 #   or: make up-local-free
 #
-# Switches coordinator + dev-backend + reviewer to inference-ollama
-# (qwen2.5-coder:7b). SocratiCode MCP stays on socraticode-ollama + qdrant.
+# Switches all 6 Hermes agents to inference-ollama (qwen2.5-coder:7b).
+# SocratiCode MCP stays on socraticode-ollama + qdrant.
 
 services:
   inference-ollama:
@@ -32,6 +32,12 @@ services:
     depends_on:
       inference-ollama: { condition: service_healthy }
 
+  dev-frontend:
+    volumes:
+      - ./hermes-data/dev-frontend/config.local-free.yaml:/opt/data/config.yaml:ro
+    depends_on:
+      inference-ollama: { condition: service_healthy }
+
   dev-backend:
     volumes:
       - ./hermes-data/dev-backend/config.local-free.yaml:/opt/data/config.yaml:ro
@@ -45,3 +51,15 @@ services:
       inference-ollama: { condition: service_healthy }
       socraticode-ollama: { condition: service_healthy }
       socraticode-qdrant: { condition: service_healthy }
+
+  qa:
+    volumes:
+      - ./hermes-data/qa/config.local-free.yaml:/opt/data/config.yaml:ro
+    depends_on:
+      inference-ollama: { condition: service_healthy }
+
+  devops:
+    volumes:
+      - ./hermes-data/devops/config.local-free.yaml:/opt/data/config.yaml:ro
+    depends_on:
+      inference-ollama: { condition: service_healthy }

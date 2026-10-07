@@ -11,11 +11,11 @@ Do these in order once credentials exist:
 
 | Step | Action | Done when |
 |---|---|---|
-| B1 | Put `SECRET_TELEGRAM_TOKEN`, `TELEGRAM_ALLOWED_USERS`, `SECRET_HERMES_API_KEY` in `.env`. For **cloud** LLM also set `SECRET_LLM_KEY_*`. For **local-free** set `LLM_MODE=local` (no OpenRouter keys needed for the three agents) | values non-placeholder where required |
-| B2 | `make secrets-dev` (or `secrets-decrypt`) → seed + skills (`make hermes-seed` **or** `make up-local-free` which seeds with `LLM_MODE=local`) | `hermes-data/*/.env` present; skills synced |
-| B3a | **Cloud:** `make up` + `docker compose --profile agents up -d dev-backend` (+ `coordinator`) | containers healthy |
-| B3b | **Local-free:** `make up-local-free` → `make local-llm-pull` → `make local-free-check` | check green |
-| B4 | Set `ADAPTER_DISPATCHER=hermes_api` and `HERMES_API_URL=http://dev-backend:8642`; recreate adapter | adapter logs show hermes_api |
+| B1 | Put `SECRET_TELEGRAM_TOKEN`, `TELEGRAM_ALLOWED_USERS`, `SECRET_HERMES_API_KEY` in `.env`. For **cloud** LLM also set `SECRET_LLM_KEY_*`. For **local-free** set `LLM_MODE=local` (no OpenRouter keys — all 6 agents use Ollama) | values non-placeholder where required |
+| B2 | `make secrets-dev` (or `secrets-decrypt`) → `cp config/rbac.example.yaml config/rbac.yaml` → seed + skills (`make hermes-seed` **or** `make up-local-free`) | `hermes-data/*/.env` present; skills synced |
+| B3a | **Cloud:** `make up` + `make up-agents` (router + 5 adapters already from `make up`) | containers healthy |
+| B3b | **Local-free:** `make up-local-free` → `make local-llm-pull` → `make local-free-check` → `make phase3-check` | checks green |
+| B4 | Local-free / prod already set `ADAPTER_DISPATCHER=hermes_api`. Cloud-only: set it in `.env` and recreate adapters | adapter logs show hermes_api |
 | B5 | Run checklist drills below | all pass rows |
 | B6 | Fill the 3-run table in [`phase0-exit-criteria.md`](phase0-exit-criteria.md) | exit criterion closed |
 
@@ -28,25 +28,20 @@ Do these in order once credentials exist:
 
 ```bash
 cp .env.example .env   # if needed
-# edit the four values above
+# edit Telegram + Hermes API key (+ LLM keys for cloud path)
 make secrets-dev
+cp config/rbac.example.yaml config/rbac.yaml
 make hermes-seed
 make skills-sync
-make up
-docker compose --profile agents up -d dev-backend
-# optional: coordinator for Telegram front door
-docker compose --profile agents up -d coordinator
+make up                 # redis + postgres + gateway + minio + router + 5 adapters
+make up-agents          # or: make up-local-free for free local LLM (all 6 agents)
 ```
 
-Set in `.env` then recreate adapter:
+Cloud path — force Hermes API dispatch (local-free / `make up-prod` already do this):
 
 ```bash
-ADAPTER_DISPATCHER=hermes_api
-HERMES_API_URL=http://dev-backend:8642
-```
-
-```bash
-docker compose up -d --force-recreate queue-adapter
+ADAPTER_DISPATCHER=hermes_api docker compose up -d --force-recreate \
+  adapter-dev-backend adapter-dev-frontend adapter-reviewer adapter-qa adapter-devops
 ```
 
 ## Checklist drills

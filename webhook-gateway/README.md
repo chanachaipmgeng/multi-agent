@@ -16,19 +16,31 @@ POST /webhook/gitlab
 | Normalize | GitLab payload → Task envelope (design §4.3); opt-in label `agent-ready` | `200 recorded` / `200 ignored` |
 | Persist + enqueue | row in `tasks` + audit events, `XADD stream:tasks` | `200 queued` |
 
-Other endpoints: `GET /healthz` (liveness), `GET /readyz` (Redis + task store), `GET /metrics` (Prometheus).
+Other endpoints: `GET /healthz`, `GET /readyz`, `GET /metrics`.
+
+## Internal API (Phase 3 / DECISION-16)
+
+Bearer = `HERMES_API_KEY`; header `X-EMAW-User-Id` = Telegram user id. RBAC from `RBAC_FILE`.
+
+| Method | Path | Purpose |
+|---|---|---|
+| POST | `/internal/tasks` | Telegram → Task envelope → `stream:tasks` |
+| GET | `/internal/tasks` · `/internal/tasks/{id}` | status-report |
+| POST | `/internal/approvals` · `…/{nonce}/decide` | HITL (DECISION-17) |
+| POST | `/internal/control/pause\|resume\|safe-mode` | kill switch / safe mode |
 
 ## Configuration (environment)
 
 | Variable | Default | Notes |
 |---|---|---|
-| `GITLAB_WEBHOOK_SECRET` / `GITLAB_WEBHOOK_SECRET_FILE` | — | **required**; prefer the `_FILE` form (Docker secret) |
-| `REDIS_URL` | `redis://localhost:6379/0` | idempotency keys + task stream |
-| `TASK_STREAM` | `stream:tasks` | coordinator inbox |
-| `DATABASE_URL` | unset | PostgreSQL task store; `${PG_PASSWORD}` is substituted from `PG_PASSWORD_FILE` |
-| `PROJECTS_FILE` | `/config/projects.yaml` | project allowlist + routing |
-| `IDEMPOTENCY_TTL_SECONDS` | `86400` | |
-| `MAX_BODY_BYTES` | `1048576` | |
+| `GITLAB_WEBHOOK_SECRET` / `GITLAB_WEBHOOK_SECRET_FILE` | — | **required** |
+| `HERMES_API_KEY` / `HERMES_API_KEY_FILE` | — | internal API bearer |
+| `REDIS_URL` | `redis://localhost:6379/0` | |
+| `TASK_STREAM` | `stream:tasks` | |
+| `DATABASE_URL` | unset | `${PG_PASSWORD}` from `PG_PASSWORD_FILE` |
+| `PROJECTS_FILE` | `/config/projects.yaml` | |
+| `RBAC_FILE` | `/config/rbac.yaml` | |
+| `CONTROL_PREFIX` | `emaw:control` | pause / safe_mode keys |
 | `PORT` | `8700` | |
 
 ## Develop & test

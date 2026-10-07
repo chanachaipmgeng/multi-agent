@@ -62,7 +62,11 @@ async def fake_redis() -> AsyncIterator[fakeredis_aio.FakeRedis]:
     try:
         yield client
     finally:
-        await client.aclose()
+        close = getattr(client, "aclose", None) or getattr(client, "close", None)
+        if close is not None:
+            result = close()
+            if hasattr(result, "__await__"):
+                await result
 
 
 @pytest.fixture

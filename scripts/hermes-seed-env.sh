@@ -74,10 +74,10 @@ for agent in coordinator dev-frontend dev-backend reviewer devops qa; do
   fi
 done
 
-# LLM_MODE=local (DECISION-15): coordinator + dev-backend + reviewer talk to
-# inference-ollama via provider:custom. Hermes accepts a dummy API key.
+# LLM_MODE=local (DECISION-15): all 6 agents talk to inference-ollama via
+# provider:custom (shared queue on one GPU). Hermes accepts a dummy API key.
 if [ "${LLM_MODE:-cloud}" = "local" ]; then
-  for agent in coordinator dev-backend reviewer; do
+  for agent in coordinator dev-frontend dev-backend reviewer qa devops; do
     f="hermes-data/$agent/.env"
     grep -q '^CUSTOM_API_KEY=' "$f" 2>/dev/null && sed -i.bak '/^CUSTOM_API_KEY=/d' "$f" && rm -f "${f}.bak"
     echo "CUSTOM_API_KEY=ollama" >> "$f"
@@ -87,7 +87,7 @@ if [ "${LLM_MODE:-cloud}" = "local" ]; then
       sed -i.bak '/^OPENROUTER_API_KEY=/d' "$f" && rm -f "${f}.bak"
     fi
   done
-  echo "LLM_MODE=local → CUSTOM_API_KEY=ollama for coordinator/dev-backend/reviewer"
+  echo "LLM_MODE=local → CUSTOM_API_KEY=ollama for all 6 agents"
 fi
 
 echo "Hermes .env files ready. Ensure TELEGRAM_ALLOWED_USERS is set for coordinator."

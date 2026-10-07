@@ -10,20 +10,21 @@ cd "$ROOT" || exit 1
 COMPOSE_FILES=(-f docker-compose.yml -f docker-compose.local-free.yml)
 OLLAMA_PORT="${INFERENCE_OLLAMA_PORT:-11436}"
 MODEL="${LOCAL_LLM_MODEL:-qwen2.5-coder:7b}"
-AGENTS=(coordinator dev-backend reviewer)
+AGENTS=(coordinator dev-frontend dev-backend reviewer qa devops)
+ADAPTERS=(router adapter-dev-frontend adapter-dev-backend adapter-reviewer adapter-qa adapter-devops)
 
 pass() { printf '  \033[32m✔\033[0m %s\n' "$1"; }
 fail() { printf '  \033[31m✘\033[0m %s\n' "$1"; failed=1; }
 failed=0
 
 echo "== compose local-free services =="
-for svc in inference-ollama socraticode-ollama socraticode-qdrant "${AGENTS[@]}"; do
+for svc in inference-ollama socraticode-ollama socraticode-qdrant minio "${AGENTS[@]}" "${ADAPTERS[@]}"; do
   if docker compose "${COMPOSE_FILES[@]}" --profile agents --profile socraticode --profile onprem-llm \
-       ps --status running 2>/dev/null | grep -qE "(${svc}|emaw-${svc}|emaw-inference-ollama)"; then
+       ps --status running 2>/dev/null | grep -qE "(${svc}|emaw-${svc}|emaw-inference-ollama|emaw-minio)"; then
     pass "$svc running"
   else
     # container_name may differ from service name
-    if docker ps --format '{{.Names}}' | grep -qE "^(emaw-${svc}|${svc}|emaw-inference-ollama)$"; then
+    if docker ps --format '{{.Names}}' | grep -qE "^(emaw-${svc}|${svc}|emaw-inference-ollama|emaw-minio|emaw-router)$"; then
       pass "$svc running (by container name)"
     else
       fail "$svc not running — run: make up-local-free"

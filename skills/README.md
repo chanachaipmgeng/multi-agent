@@ -24,12 +24,13 @@ Layout: `skills/<agent>/<skill>.md`, plus `skills/_dev-common/` (shared by
 | `human-approval-gate` | coordinator | **0** | implemented |
 | `resolve-issue` | dev-frontend, dev-backend | **1** | implemented |
 | `incident-triage` | devops | **1** | implemented |
-| `switch-context` | coordinator (single agent in 1–2) | 2 | implemented (procedure) — prefer profiles in Phase 3 |
+| `switch-context` | coordinator (single agent in 1–2) | 2 | deprecated in Phase 3 — use `route-task` |
 | `review-with-socraticode` | reviewer | 2 | implemented — SocratiCode MCP (`codebase_*`), local AGPL |
 | `deep-review` | reviewer | 2 | implemented — `codebase_impact` + `codebase_graph_*` |
-| `fix-pipeline`, `deploy-prod` | devops | 3 | placeholder |
-| `route-task`, `status-report` | coordinator | 3 | placeholder |
-| `write-e2e`, `smoke-test` | qa | 3 | placeholder |
+| `route-task`, `status-report`, `pause-resume`, `safe-mode` | coordinator | 3 | implemented |
+| `human-approval-gate` | coordinator | 0→3 | v1.1 — `/internal/approvals` + y/n nonce (DECISION-17) |
+| `fix-pipeline`, `deploy-prod` | devops | 3 | implemented |
+| `write-e2e`, `smoke-test` | qa | 3 | implemented |
 
 Keep steps numbered and explicit about *stop* conditions — the self-heal limit
 and the approval gate are what make these safe to run unattended.
