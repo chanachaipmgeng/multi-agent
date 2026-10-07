@@ -24,8 +24,9 @@ Layout: `skills/<agent>/<skill>.md`, plus `skills/_dev-common/` (shared by
 | `human-approval-gate` | coordinator | **0** | implemented |
 | `resolve-issue` | dev-frontend, dev-backend | **1** | implemented |
 | `incident-triage` | devops | **1** | implemented |
-| `switch-context` | coordinator (single agent in 1–2) | 2 | placeholder — prefer profiles in Phase 3 |
-| `review-with-socraticode`, `deep-review` | reviewer | 2 | placeholder — blocked on DECISION-6 |
+| `switch-context` | coordinator (single agent in 1–2) | 2 | implemented (procedure) — prefer profiles in Phase 3 |
+| `review-with-socraticode` | reviewer | 2 | implemented — SocratiCode MCP (`codebase_*`), local AGPL |
+| `deep-review` | reviewer | 2 | implemented — `codebase_impact` + `codebase_graph_*` |
 | `fix-pipeline`, `deploy-prod` | devops | 3 | placeholder |
 | `route-task`, `status-report` | coordinator | 3 | placeholder |
 | `write-e2e`, `smoke-test` | qa | 3 | placeholder |

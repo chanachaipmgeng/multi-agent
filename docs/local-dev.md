@@ -44,14 +44,41 @@ Hermes dashboard 9119, Hermes API 8642 (coordinator) / 8643 (dev-backend).
 
 ```bash
 make up-socraticode                 # Ollama :11435 + Qdrant :16333/:16334 (loopback)
-curl -s localhost:11435/api/tags    # Ollama up
-curl -s localhost:16333/readyz      # Qdrant up
+make socraticode-check              # /api/tags + /readyz + embedding model present
+```
+
+First-time (or empty volume) — pull the embedding model SocratiCode expects:
+
+```bash
+docker exec socraticode-ollama ollama pull nomic-embed-text
+make socraticode-check
 ```
 
 Volumes reuse `socraticode_ollama_data` / `socraticode_qdrant_data` if they already exist.
 In-compose URLs for the reviewer MCP: `http://socraticode-ollama:11434`,
-`http://socraticode-qdrant:6333`. Confidential LLM stays on profile `onprem-llm`
+`http://socraticode-qdrant:6333`. Host-side MCP: `http://127.0.0.1:11435` /
+`http://127.0.0.1:16333`. Confidential LLM stays on profile `onprem-llm`
 (`inference-ollama`) — do not share model stores.
+
+`mcp_servers.socraticode` is enabled in the reviewer profile (DECISION-6 local AGPL —
+no API key). See `docs/phase2-exit-criteria.md`.
+
+## 3c. Local-free mode (DECISION-15 + DECISION-6)
+
+Runs platform + SocratiCode infra + `inference-ollama` + **coordinator / dev-backend /
+reviewer** on a local LLM (`qwen2.5-coder:7b` by default). No OpenRouter keys for those three.
+
+```bash
+# .env: SECRET_HERMES_API_KEY=…  (Telegram optional for API-only drills)
+#       LLM_MODE=local           # optional; make up-local-free forces it for seed
+make secrets-dev
+make up-local-free              # compose -f docker-compose.yml -f docker-compose.local-free.yml
+make local-llm-pull             # first time: pull qwen2.5-coder:7b (needs NVIDIA GPU)
+make local-free-check
+```
+
+Host ports: inference Ollama `127.0.0.1:11436`, SocratiCode Ollama `11435`, Qdrant `16333`.
+Configs: `hermes-data/*/config.local-free.yaml` (mounted over `config.yaml`).
 
 ## 4. Hermes (single agent for Phase 0)
 

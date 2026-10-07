@@ -1,11 +1,13 @@
 # Enterprise Multi-Agent Workspace — developer entry points
 SHELL := /bin/bash
 COMPOSE ?= docker compose
+COMPOSE_LOCAL_FREE ?= $(COMPOSE) -f docker-compose.yml -f docker-compose.local-free.yml
 PY      ?= python3
 GW      := webhook-gateway
 QA      := queue-adapter
 VENV    := $(GW)/.venv
 QVENV   := $(QA)/.venv
+LOCAL_LLM_MODEL ?= qwen2.5-coder:7b
 
 .DEFAULT_GOAL := help
 
@@ -62,7 +64,28 @@ up-socraticode: ## start Ollama + Qdrant for SocratiCode MCP (DECISION-6)
 	@docker volume create socraticode_qdrant_data >/dev/null
 	$(COMPOSE) --profile socraticode up -d socraticode-ollama socraticode-qdrant
 
+socraticode-check: ## smoke-check SocratiCode Ollama + Qdrant (no license needed)
+	@scripts/socraticode-infra-check.sh
+
+up-local-free: ## local-free stack: platform + socraticode + inference-ollama + 3 agents
+	@test -s secrets/hermes_api_key || (echo "set SECRET_HERMES_API_KEY in .env and re-run secrets-dev/decrypt"; exit 1)
+	@docker volume create socraticode_ollama_data >/dev/null
+	@docker volume create socraticode_qdrant_data >/dev/null
+	@LLM_MODE=local scripts/hermes-seed-env.sh
+	@scripts/sync-skills.sh
+	$(COMPOSE_LOCAL_FREE) --profile agents --profile socraticode --profile onprem-llm up -d \
+		redis postgres webhook-gateway queue-adapter \
+		inference-ollama socraticode-ollama socraticode-qdrant \
+		coordinator dev-backend reviewer
+
+local-llm-pull: ## pull LOCAL_LLM_MODEL into inference-ollama (default qwen2.5-coder:7b)
+	docker exec emaw-inference-ollama ollama pull $(LOCAL_LLM_MODEL)
+
+local-free-check: ## smoke-check local-free LLM + SocratiCode infra
+	@scripts/local-free-check.sh
+
 down: ## stop everything (keeps volumes)
+	$(COMPOSE_LOCAL_FREE) --profile agents --profile ingress --profile onprem-llm --profile socraticode down
 	$(COMPOSE) --profile agents --profile ingress --profile onprem-llm --profile socraticode down
 
 logs: ## tail gateway + adapter logs
@@ -124,4 +147,4 @@ webhook-test: ## send a sample Issue Hook to the running gateway (KIND=issue|pip
 verify-phase0: ## run the Phase 0 exit-criteria self-check
 	@scripts/verify-phase0.sh
 
-.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration lint gitleaks webhook-test verify-phase0
+.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-socraticode socraticode-check up-local-free local-llm-pull local-free-check down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration lint gitleaks webhook-test verify-phase0

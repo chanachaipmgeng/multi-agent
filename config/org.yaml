@@ -27,7 +27,11 @@ roles:                                      # DECISION-8 — copy into hermes-da
   developer: []
 
 socraticode:                                # DECISION-6
-  license_holder: "<to confirm>"
-  mode: "cli+mcp"                           # decided; enable when key present
+  license: "AGPL-3.0"
+  license_holder: "n/a (local mode)"
+  mode: "mcp-local"                         # npx socraticode → Ollama+Qdrant in compose
+
+llm_mode: "cloud"                           # cloud | local (DECISION-15); local → make up-local-free
+local_llm_model: "qwen2.5-coder:7b"
 
 sandbox_strategy: "compose-local"           # DECISION-14 — see docs/decisions.md

@@ -72,12 +72,14 @@ jobs:
       - name: docker compose config
         run: |
           mkdir -p secrets
-          for f in gitlab_webhook_secret pg_password tunnel_token telegram_token socraticode_key \
+          for f in gitlab_webhook_secret pg_password tunnel_token telegram_token socraticode_key hermes_api_key \
                    llm_key_coordinator llm_key_dev_frontend llm_key_dev_backend llm_key_reviewer llm_key_devops llm_key_qa \
                    gitlab_token_readonly gitlab_token_frontend gitlab_token_backend gitlab_token_ci gitlab_token_qa; do
             echo ci-placeholder > "secrets/$f"
           done
           docker compose --profile agents --profile ingress --profile onprem-llm --profile socraticode config -q
+          docker compose -f docker-compose.yml -f docker-compose.local-free.yml \
+            --profile agents --profile socraticode --profile onprem-llm config -q
       - name: shellcheck
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck

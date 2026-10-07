@@ -53,8 +53,8 @@ write_env dev-backend \
 
 write_env reviewer \
   OPENROUTER_API_KEY=llm_key_reviewer \
-  GITLAB_TOKEN=gitlab_token_readonly \
-  SOCRATICODE_API_KEY=socraticode_key
+  GITLAB_TOKEN=gitlab_token_readonly
+  # SOCRATICODE_API_KEY not required — DECISION-6 local AGPL (MCP uses Ollama+Qdrant)
 
 write_env devops \
   OPENROUTER_API_KEY=llm_key_devops \
@@ -73,5 +73,21 @@ for agent in coordinator dev-frontend dev-backend reviewer devops qa; do
       echo "TELEGRAM_ALLOWED_USERS=$TELEGRAM_ALLOWED_USERS" >> "$f"
   fi
 done
+
+# LLM_MODE=local (DECISION-15): coordinator + dev-backend + reviewer talk to
+# inference-ollama via provider:custom. Hermes accepts a dummy API key.
+if [ "${LLM_MODE:-cloud}" = "local" ]; then
+  for agent in coordinator dev-backend reviewer; do
+    f="hermes-data/$agent/.env"
+    grep -q '^CUSTOM_API_KEY=' "$f" 2>/dev/null && sed -i.bak '/^CUSTOM_API_KEY=/d' "$f" && rm -f "${f}.bak"
+    echo "CUSTOM_API_KEY=ollama" >> "$f"
+    # Drop empty/placeholder OpenRouter key so Hermes prefers custom
+    if grep -q '^OPENROUTER_API_KEY=$' "$f" 2>/dev/null || \
+       grep -q 'sk-placeholder' "$f" 2>/dev/null; then
+      sed -i.bak '/^OPENROUTER_API_KEY=/d' "$f" && rm -f "${f}.bak"
+    fi
+  done
+  echo "LLM_MODE=local → CUSTOM_API_KEY=ollama for coordinator/dev-backend/reviewer"
+fi
 
 echo "Hermes .env files ready. Ensure TELEGRAM_ALLOWED_USERS is set for coordinator."

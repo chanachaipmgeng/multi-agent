@@ -1,0 +1,51 @@
+# Hermes profile: dev-backend — local-free override (DECISION-15)
+
+model:
+  provider: custom
+  base_url: http://inference-ollama:11434/v1
+  default: qwen2.5-coder:7b
+
+fallback_providers:
+  - provider: custom
+    base_url: http://inference-ollama:11434/v1
+    model: qwen2.5-coder:7b
+
+terminal:
+  backend: local
+  cwd: /workspace/backend-api
+  timeout: 1200
+
+approvals:
+  mode: smart
+  deny:
+    - "git push* main*"
+    - "git push* master*"
+    - "git push* release/*"
+    - "docker system prune*"
+    - "*DROP TABLE*"
+    - "*DROP DATABASE*"
+    - "*DROP COLUMN*"
+    - "rm -rf /*"
+    - "rm -rf /"
+
+worktree: true
+worktree_sync: true
+
+skills:
+  auto_load:
+    - dev-flow
+    - resolve-issue
+    - review-code
+
+database:
+  journal_mode: delete
+
+emaw:
+  agent_md: /opt/data/AGENT.md
+  platform_policy: /config/policies/platform-policy.yaml
+  projects: /config/projects.yaml
+  allowed_projects: [backend-api, sandbox-smoke]
+  inbox_stream: stream:dev-backend
+  results_stream: stream:results
+  token_budget_per_task: 400000
+  self_heal_limit: 3

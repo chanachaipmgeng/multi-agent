@@ -1,12 +1,14 @@
-# Hermes profile: reviewer — real schema (DECISION-1 / v0.21.5)
+# Hermes profile: reviewer — local-free override (DECISION-15 + DECISION-6)
 
 model:
-  provider: openrouter
-  default: anthropic/claude-sonnet-4
+  provider: custom
+  base_url: http://inference-ollama:11434/v1
+  default: qwen2.5-coder:7b
 
 fallback_providers:
-  - provider: openrouter
-    model: openai/o3-mini
+  - provider: custom
+    base_url: http://inference-ollama:11434/v1
+    model: qwen2.5-coder:7b
 
 terminal:
   backend: local
@@ -31,10 +33,7 @@ skills:
     - review-with-socraticode
     - deep-review
 
-# SocratiCode MCP (DECISION-6) — local AGPL mode, no API key.
-# Infra: `make up-socraticode` → socraticode-ollama + socraticode-qdrant on workers net.
-# Host-side MCP (outside compose): OLLAMA_URL=http://127.0.0.1:11435
-#   QDRANT_URL=http://127.0.0.1:16333  (same env keys, different hosts).
+# SocratiCode MCP — local AGPL, no API key (same as config.yaml)
 mcp_servers:
   socraticode:
     command: npx

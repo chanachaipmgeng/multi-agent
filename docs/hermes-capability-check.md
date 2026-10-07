@@ -65,7 +65,7 @@ Secrets live in `/opt/data/.env` (UPPER_SNAKE env vars). Non-secret settings liv
 | Worktrees | `worktree: true` + `worktree_sync: true` | manual `git worktree` only in skills |
 | Skills auto-load | `skills.auto_load: [name, …]` | — |
 | Identity | `SOUL.md` (primary) + `AGENT.md` / `AGENTS.md` | inventing `identity:` block in config.yaml |
-| MCP | `mcp_servers:` in config.yaml | shape is compatible; keep reviewer placeholder |
+| MCP | `mcp_servers:` in config.yaml | shape compatible; reviewer enables `socraticode` (DECISION-6 local AGPL) |
 | SQLite on Windows bind-mount | `database.journal_mode: delete` **or** named Docker volume for `/opt/data` | bind-mount from Windows FS + WAL corrupts `state.db` |
 
 `hermes config list` does **not** exist — use `hermes config show` / `hermes config get` / `hermes config --help`.

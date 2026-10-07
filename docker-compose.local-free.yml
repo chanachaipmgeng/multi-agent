@@ -1,0 +1,47 @@
+# Local-free override (DECISION-15 + DECISION-6)
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.local-free.yml \
+#     --profile agents --profile socraticode --profile onprem-llm up -d …
+#   or: make up-local-free
+#
+# Switches coordinator + dev-backend + reviewer to inference-ollama
+# (qwen2.5-coder:7b). SocratiCode MCP stays on socraticode-ollama + qdrant.
+
+services:
+  inference-ollama:
+    container_name: emaw-inference-ollama
+    ports: ["127.0.0.1:${INFERENCE_OLLAMA_PORT:-11436}:11434"]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  coordinator:
+    volumes:
+      - ./hermes-data/coordinator/config.local-free.yaml:/opt/data/config.yaml:ro
+    depends_on:
+      inference-ollama: { condition: service_healthy }
+
+  dev-backend:
+    volumes:
+      - ./hermes-data/dev-backend/config.local-free.yaml:/opt/data/config.yaml:ro
+    depends_on:
+      inference-ollama: { condition: service_healthy }
+
+  reviewer:
+    volumes:
+      - ./hermes-data/reviewer/config.local-free.yaml:/opt/data/config.yaml:ro
+    depends_on:
+      inference-ollama: { condition: service_healthy }
+      socraticode-ollama: { condition: service_healthy }
+      socraticode-qdrant: { condition: service_healthy }

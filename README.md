@@ -8,7 +8,8 @@ Webhook Gateway, Coordinator มอบหมายงานให้ worker agen
 
 สถานะ: **Phase 0 — Foundation (code ✅ · live exit criteria ⏳)** · **Phase 1 — tooling ✅ · blocked on DECISION-5/11**
 Hermes Agent **v0.21.5** capability check: [`docs/hermes-capability-check.md`](docs/hermes-capability-check.md) · decisions: [`docs/decisions.md`](docs/decisions.md)
-ดู [`docs/phase0-exit-criteria.md`](docs/phase0-exit-criteria.md) / [`docs/phase0-runbook.md`](docs/phase0-runbook.md) และ [`docs/phase1-exit-criteria.md`](docs/phase1-exit-criteria.md)
+ดู [`docs/phase0-exit-criteria.md`](docs/phase0-exit-criteria.md) / [`docs/phase0-runbook.md`](docs/phase0-runbook.md),
+[`docs/phase1-exit-criteria.md`](docs/phase1-exit-criteria.md) และ [`docs/phase2-exit-criteria.md`](docs/phase2-exit-criteria.md)
 เอกสารออกแบบฉบับเต็ม: *Enterprise Multi-Agent Workspace — System Design Document v1.1*
 
 ## Architecture (ย่อ)
@@ -33,6 +34,7 @@ Everything is auditable · Grow in phases
 | Path | What |
 |---|---|
 | `docker-compose.yml` | dev stack: `redis`, `postgres`, `webhook-gateway`; profiles `agents` (6 Hermes), `ingress` (cloudflared), `onprem-llm` (confidential Ollama), `socraticode` (Ollama + Qdrant for SocratiCode) |
+| `docker-compose.local-free.yml` | override: coordinator + dev-backend + reviewer → `inference-ollama` (`make up-local-free`, DECISION-15) |
 | `webhook-gateway/` | FastAPI gateway — `X-Gitlab-Token` constant-time check, idempotency (`X-Gitlab-Event-UUID`), Task envelope, Redis Streams publisher, Postgres task store, `/metrics`; tests |
 | `queue-adapter/` | Redis Streams consumer → Hermes dispatcher (`dryrun` / `http` / `hermes_cli`), GitLab job-trace enrichment with secret redaction, retry via `XAUTOCLAIM`, dead-letter, task state + audit, Telegram notice; tests |
 | `db/migrations/` | Task Store schema: `tasks`, `handoffs`, `approvals`, `audit_events` (append-only), least-privilege roles |
@@ -40,12 +42,12 @@ Everything is auditable · Grow in phases
 | `config/policies/platform-policy.yaml` | platform policy layer 1: never push `main`, HITL matrix, limits, prompt-injection rule |
 | `config/rbac.example.yaml` | coordinator RBAC (approver ≠ developer) — enforced Phase 3 |
 | `hermes-data/<agent>/` | 6 profiles (`coordinator`, `dev-frontend`, `dev-backend`, `reviewer`, `devops`, `qa`): `AGENT.md`, `config.yaml`, `skills/`, `memory/` |
-| `skills/` | version-controlled skills; Phase 0: `dev-flow`, `review-code`, `human-approval-gate` (+ placeholders) |
+| `skills/` | version-controlled skills; Phase 0–2 procedures in git (`dev-flow` … `review-with-socraticode` / `deep-review`); Phase 3 still placeholder |
 | `workspace/` | project clones (gitignored) + `_templates/` (`project-standards.md`, `.agentignore`, `.socraticodeignore`) + `.worktrees/` |
 | `examples/sandbox-smoke/` | minimal pilot project whose `./test.sh` returns exit 0/1 correctly |
 | `cloudflared/` | Named Tunnel config template + runbook (Phase 1, blocked on domain) |
 | `scripts/`, `Makefile` | prereq check, SOPS secrets, migrate, Hermes configure, onboard repo, skill sync, test webhook, Phase 0 verifier, **tunnel setup/status, GitLab webhook register, token scope check** |
-| `docs/` | `local-dev.md`, `secrets.md`, `gitlab-setup.md`, `phase0-exit-criteria.md`, `phase1-exit-criteria.md`, `runbooks/{tunnel,token-rotation}.md` |
+| `docs/` | `local-dev.md`, `secrets.md`, `gitlab-setup.md`, `phase0-exit-criteria.md`, `phase1-exit-criteria.md`, `phase2-exit-criteria.md`, `skill-acceptance.md`, `runbooks/{tunnel,token-rotation}.md` |
 | `.env.example`, `.sops.yaml`, `.gitleaks.toml`, `.agentignore`, `.pre-commit-config.yaml` | secrets & hygiene |
 
 ## Quick start (รันในเครื่อง / Run locally)
@@ -69,9 +71,12 @@ scripts/send-test-webhook.sh issue --bad-token    # → HTTP 401
 make outbox                              # prompts the adapter built for Hermes (DISPATCHER=dryrun)
 docker compose exec postgres psql -U emaw -c 'select task_id,type,state,assigned_to from tasks'
 
-# 4) Hermes agent (needs Telegram + LLM + SECRET_HERMES_API_KEY in .env)
+# 4) Hermes agent — cloud LLM (OpenRouter) OR local-free (Ollama, no OpenRouter keys)
+# Cloud:
 make hermes-seed && make skills-sync
 docker compose --profile agents up -d dev-backend   # or: make up-agents
+# Local-free (DECISION-15; needs NVIDIA GPU + SECRET_HERMES_API_KEY):
+# make up-local-free && make local-llm-pull && make local-free-check
 # then ADAPTER_DISPATCHER=hermes_api HERMES_API_URL=http://dev-backend:8642 → recreate queue-adapter
 
 # 5) tests
@@ -105,7 +110,7 @@ Task envelope (design §4.3): `task_id`, `trace_id`, `type`, `project`, `source`
 | Linux VM from Phase 3, WSL2 for dev now | `docs/local-dev.md`, compose is host-agnostic |
 | Hybrid LLM (cloud + Ollama for sensitive repos) | `projects.yaml#data_classification/llm_backend`, `inference-ollama` profile, per-profile `local_endpoint` |
 | GitLab webhooks via Cloudflare Named Tunnel | `cloudflared/`, compose `ingress` profile, single path `/webhook/gitlab` |
-| SocratiCode via CLI + MCP | `hermes-data/reviewer/config.yaml#mcp_servers` (enabled Phase 2) |
+| SocratiCode MCP (local AGPL) | `hermes-data/reviewer/config.yaml#mcp_servers` + `make up-socraticode` / `make up-local-free` |
 | No auto-push for 2 months; approver ≠ developer; never push `main` | `projects.yaml#auto_push_branches: []`, `platform-policy.yaml`, `rbac.example.yaml`, every `AGENT.md` |
 | Gateway built in-house: FastAPI + Redis Streams + PostgreSQL | `webhook-gateway/`, `queue-adapter/`, `db/` |
 | Opt-in via label `agent-ready` | gateway `normalize()` → `recorded` without label |

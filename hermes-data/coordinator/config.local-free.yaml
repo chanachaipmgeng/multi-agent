@@ -1,0 +1,51 @@
+# Hermes profile: coordinator — local-free override (DECISION-15)
+# Secrets live in /opt/data/.env (TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERS,
+# CUSTOM_API_KEY=ollama, GITLAB_TOKEN, API_SERVER_KEY).
+
+model:
+  provider: custom
+  base_url: http://inference-ollama:11434/v1
+  default: qwen2.5-coder:7b
+
+fallback_providers:
+  - provider: custom
+    base_url: http://inference-ollama:11434/v1
+    model: qwen2.5-coder:7b
+
+terminal:
+  # DECISION-14 (compose): container is the sandbox — no docker.sock.
+  backend: local
+  cwd: /workspace
+  timeout: 180
+
+approvals:
+  mode: smart
+  deny:
+    - "git push* main*"
+    - "git push* master*"
+    - "git push* release/*"
+    - "docker system prune*"
+    - "*DROP TABLE*"
+    - "*DROP DATABASE*"
+    - "rm -rf /*"
+    - "rm -rf /"
+
+worktree: false
+worktree_sync: false
+
+skills:
+  auto_load:
+    - human-approval-gate
+    - switch-context
+
+database:
+  journal_mode: delete
+
+emaw:
+  agent_md: /opt/data/AGENT.md
+  platform_policy: /config/policies/platform-policy.yaml
+  projects: /config/projects.yaml
+  rbac: /opt/data/rbac.yaml
+  inbox_stream: stream:tasks
+  results_stream: stream:results
+  token_budget_per_task: 50000

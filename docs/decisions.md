@@ -28,3 +28,30 @@ ASSUMPTION A1/A2 updated: key names in early drafts (`telegram.token`, `gitlab.b
 Rationale for (B) now: this machine only has WSL distro `docker-desktop` (no Ubuntu), mounting `docker.sock` into workers violates platform policy P2/T4, and named volumes already solve the Windows WAL issue for `/opt/data`.
 
 Revisit (A)/(C) when moving production to a Linux VM (DECISION-2 / Phase 3).
+
+## DECISION-6 — SocratiCode mode (decided 2026-10-07)
+
+| Item | Decision |
+|---|---|
+| License for local EMAW | **AGPL-3.0 local-first** — no `SOCRATICODE_API_KEY` / commercial key required |
+| Runtime | MCP via `npx -y socraticode` inside the reviewer container |
+| Infra | Compose profile `socraticode`: `socraticode-ollama` (embeddings) + `socraticode-qdrant` |
+| Env | `OLLAMA_MODE=external`, `QDRANT_MODE=external`, `EMBEDDING_PROVIDER=ollama`, `EMBEDDING_MODEL=nomic-embed-text` |
+| Tools used by skills | `codebase_index`, `codebase_search`, `codebase_symbol`, `codebase_impact`, `codebase_graph_*` |
+
+AGPL note: fine for private/internal use of unmodified upstream. If you **modify** SocratiCode and offer it as a network service to others, comply with AGPL or obtain a commercial license.
+
+Obsolete assumption: early drafts treated DECISION-6 as “blocked until SECRET_SOCRATICODE_KEY”.
+
+## DECISION-15 — Local-free LLM mode (decided 2026-10-07)
+
+| Item | Decision |
+|---|---|
+| Scope | **coordinator + dev-backend + reviewer** only (minimal Phase 0/2 drill set) |
+| Provider | Hermes `model.provider: custom` → `http://inference-ollama:11434/v1` |
+| Default model | `qwen2.5-coder:7b` (GPU 8–12 GB VRAM); override with `LOCAL_LLM_MODEL` |
+| Compose | `docker-compose.local-free.yml` + `make up-local-free` / `local-llm-pull` / `local-free-check` |
+| Seed | `LLM_MODE=local` → `CUSTOM_API_KEY=ollama` in those three agents’ `.env` |
+| Trade-off | Free / private; quality and latency below cloud Sonnet — not a production substitute without evaluation |
+
+Other agents (`dev-frontend`, `devops`, `qa`) stay on OpenRouter configs until explicitly opted in.
