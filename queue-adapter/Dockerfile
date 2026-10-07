@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
-# TODO(E12, Phase 4): pin by digest
-FROM python:3.12-slim
+# E12 / D4.6 — pin base by digest (refresh: scripts/pin-digests.sh)
+FROM python:3.12-slim@sha256:05cda9777409a9c3ffddd94a4c476b79f0769a0b4857f0c7ed9226b6800b0d6f
 
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 

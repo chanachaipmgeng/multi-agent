@@ -14,6 +14,16 @@
 | MinIO | local compose + SigV4 via root password | local or external | compose MinIO + offsite restic (Phase 4) |
 | Verified | API Flow A + E11 pause/RBAC (see `phase3-exit-criteria.md`) | — | — |
 
+## Supply chain (D4.6 / E12)
+
+* Base images and compose services are **digest-pinned** (`python:3.12-slim@sha256:…`,
+  `REDIS_IMAGE`, `POSTGRES_IMAGE`, …). Defaults live in `docker-compose.yml` / Dockerfiles;
+  override via `.env`.
+* Refresh pins: `scripts/pin-digests.sh` (dry-run) or `--apply`.
+* CI job `supply-chain` builds gateway + adapter images and runs Trivy
+  (`severity: HIGH,CRITICAL`, `ignore-unfixed: true`) plus `trivy config` on compose/Dockerfiles.
+* Ignore list: `.trivyignore` (empty by default — document every CVE there).
+
 ## Promote checklist
 
 1. Fill DECISION-8 / 11 / 5 / 2 in `config/org.yaml`

@@ -58,7 +58,7 @@ x-adapter-common: &adapter-common
 services:
   # ------------------------------------------------------------ platform
   redis:
-    image: redis:7-alpine
+    image: ${REDIS_IMAGE:-redis:7-alpine@sha256:8b81dd37ff027bec4e516d41acfbe9fe2460070dc6d4a4570a2ac5b9d59df065}
     command: ["redis-server", "--appendonly", "yes", "--save", "", "--maxmemory-policy", "noeviction"]
     volumes: ["redis-data:/data"]
     ports: ["127.0.0.1:${REDIS_PORT:-6379}:6379"]
@@ -71,7 +71,7 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: postgres:16-alpine
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine@sha256:16bc17c64a573ef34162af9298258d1aec548232985b33ed7b1eac33ba35c229}
     environment:
       - POSTGRES_USER=emaw
       - POSTGRES_DB=emaw
@@ -335,7 +335,7 @@ services:
     # MinIO has no *_FILE env support — password from .env / compose interpolation.
     # Adapters authenticate as root (SigV4) via secrets/minio_root_password (local-free).
     # Prod may switch to a dedicated agent key (secrets/minio_agent_secret + minio-init).
-    image: minio/minio:latest
+    image: ${MINIO_IMAGE:-minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e}
     container_name: emaw-minio
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
@@ -357,7 +357,7 @@ services:
   cloudflared:
     # Placeholder until DECISION-5 (domain + Cloudflare account) is confirmed.
     # Create the tunnel once (see cloudflared/README.md) and put its token in secrets/tunnel_token.
-    image: cloudflare/cloudflared:latest
+    image: ${CLOUDFLARED_IMAGE:-cloudflare/cloudflared@sha256:9b49eed8f62806d5d45ddf59ecefb5710429598ea6d3fcccd2af938f621b2b07}
     command: ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
     environment:
       - TUNNEL_TOKEN_FILE=/run/secrets/tunnel_token
@@ -530,7 +530,7 @@ services:
 
   # --------------------------------------------------- optional inference
   inference-ollama:
-    image: ollama/ollama:latest
+    image: ${OLLAMA_IMAGE:-ollama/ollama@sha256:8262851b2846b87c649eddf3e76beb270c52f4d1bc94559f47efde16b0841551}
     volumes: ["ollama-data:/root/.ollama"]
     networks: [inference, workers]
     profiles: ["onprem-llm"]
@@ -543,7 +543,7 @@ services:
   # in-compose clients use http://socraticode-ollama:11434 and
   # http://socraticode-qdrant:6333 on the workers network.
   socraticode-ollama:
-    image: ollama/ollama:latest
+    image: ${OLLAMA_IMAGE:-ollama/ollama@sha256:8262851b2846b87c649eddf3e76beb270c52f4d1bc94559f47efde16b0841551}
     container_name: socraticode-ollama
     volumes: ["socraticode-ollama-data:/root/.ollama"]
     ports: ["127.0.0.1:${SOCRATICODE_OLLAMA_PORT:-11435}:11434"]
@@ -558,7 +558,7 @@ services:
       start_period: 20s
 
   socraticode-qdrant:
-    image: qdrant/qdrant:v1.17.0
+    image: ${QDRANT_IMAGE:-qdrant/qdrant:v1.17.0@sha256:f1c7272cdac52b38c1a0e89313922d940ba50afd90d593a1605dbbc214e66ffb}
     container_name: socraticode-qdrant
     volumes: ["socraticode-qdrant-data:/qdrant/storage"]
     ports:

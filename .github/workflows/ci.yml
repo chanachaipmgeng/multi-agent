@@ -75,7 +75,7 @@ jobs:
           for f in gitlab_webhook_secret pg_password tunnel_token telegram_token socraticode_key hermes_api_key \
                    llm_key_coordinator llm_key_dev_frontend llm_key_dev_backend llm_key_reviewer llm_key_devops llm_key_qa \
                    gitlab_token_readonly gitlab_token_frontend gitlab_token_backend gitlab_token_ci gitlab_token_qa \
-                   minio_agent_secret minio_root_password; do
+                   minio_agent_secret minio_root_password dashboard_password dashboard_session_secret; do
             echo ci-placeholder > "secrets/$f"
           done
           cp config/rbac.example.yaml config/rbac.yaml
@@ -94,3 +94,40 @@ jobs:
         run: |
           (cd examples/sandbox-smoke && ./test.sh)
           if (cd examples/sandbox-smoke && SMOKE_FORCE_FAIL=1 ./test.sh); then echo "expected exit 1"; exit 1; fi
+
+  supply-chain:
+    name: digest pins · Trivy image + config (D4.6 / E12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: build images
+        run: |
+          docker build -t emaw/webhook-gateway:ci ./webhook-gateway
+          docker build -t emaw/queue-adapter:ci ./queue-adapter
+      - name: Trivy scan webhook-gateway
+        uses: aquasecurity/trivy-action@18f2510ee396bbf400402947b394f2dd8c87dbb0 # 0.29.0
+        with:
+          image-ref: emaw/webhook-gateway:ci
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+      - name: Trivy scan queue-adapter
+        uses: aquasecurity/trivy-action@18f2510ee396bbf400402947b394f2dd8c87dbb0 # 0.29.0
+        with:
+          image-ref: emaw/queue-adapter:ci
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+      - name: Trivy config (compose + Dockerfiles)
+        uses: aquasecurity/trivy-action@18f2510ee396bbf400402947b394f2dd8c87dbb0 # 0.29.0
+        with:
+          scan-type: config
+          scan-ref: .
+          format: table
+          exit-code: "1"
+          severity: HIGH,CRITICAL
+          trivyignores: .trivyignore

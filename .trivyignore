@@ -1,0 +1,4 @@
+# Trivy ignore list (D4.6 / E12). Prefer fixing images over ignoring.
+# Format: CVE-YYYY-NNNNN  # reason + ticket
+#
+# Empty by default — add entries only with a dated justification.
