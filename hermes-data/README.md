@@ -1,19 +1,27 @@
 # hermes-data/ — one profile per agent
 
-Each sub-directory is mounted as `/opt/data` into exactly one Hermes container
-(design §4.1 "one role, one profile, one data dir"). Layout per profile:
+Each sub-directory is the Hermes **data dir** (`HERMES_HOME` / `/opt/data`) for one role
+(design §4.1). Layout matches Hermes Agent **v0.21.5** (see `docs/hermes-capability-check.md`).
 
 | Path | In git? | Purpose |
 |---|---|---|
-| `AGENT.md` | yes | agent policy — layer 2 of the rule hierarchy (what this role may / must never do) |
-| `config.yaml` | yes | Hermes config for the role (model tier, `terminal.backend: docker`, mounts, budgets). Secrets are referenced as `/run/secrets/*` paths, never inline |
-| `skills/` | generated | populated from `skills/<agent>/` by `make skills-sync`; do not edit here (E13) |
-| `memory/` | no | sessions, learned facts — runtime data, gitignored |
+| `SOUL.md` | yes | Primary agent identity (slot #1 in Hermes system prompt) |
+| `AGENT.md` | yes | Role policy — layer 2 of the rule hierarchy (do / never-do) |
+| `config.yaml` | yes | Real Hermes config: `model`, `terminal`, `approvals`, `worktree`, `skills.auto_load`, `database`, optional `mcp_servers` |
+| `.env` | **no** | Runtime secrets (`TELEGRAM_BOT_TOKEN`, `OPENROUTER_API_KEY`, `GITLAB_TOKEN`, `API_SERVER_KEY`, …) — materialised from `./secrets/*` at container start |
+| `skills/emaw/<skill>/SKILL.md` | generated | Promoted from `skills/` by `make skills-sync` (E13 — never edit here) |
+| `memory/` / `sessions/` / `logs/` | no | Runtime state |
 
-Config keys follow the source documents (`terminal.backend`, `telegram.allowed_users`,
-`gitlab.base_url`, …). **Verify them against `hermes config list` on the version you deploy
-(DECISION-1)** — the structure of the profiles does not depend on the exact key names.
+## Terminal backend (DECISION-14)
 
-Phase 0 runs a single agent. Use `dev-backend` or `dev-frontend` as that agent (they carry the
-`dev-flow` / `review-code` skills), or the host-installed Hermes configured by
-`scripts/hermes-configure.sh`. The remaining profiles come alive in Phase 3.
+- **Compose agents profile:** `terminal.backend: local` — the Hermes container *is* the sandbox (`cap_drop: ALL`, no `docker.sock`).
+- **Host / WSL2 Ubuntu Phase 0:** `hermes config set terminal.backend docker` and use `nousresearch/hermes-sandbox:desktop`.
+
+## Secrets
+
+Do not put API keys in `config.yaml`. Use UPPER_SNAKE in `.env` (Hermes routes `hermes config set OPENROUTER_API_KEY …` there automatically). Compose injects them from Docker secrets — see `scripts/hermes-configure.sh` and `docker-compose.yml`.
+
+## Phase 0 vs Phase 3
+
+Phase 0 runs a **single** agent (`dev-backend` or `dev-frontend`, or host-installed Hermes).
+Phase 3 brings all six profiles online as separate compose services.

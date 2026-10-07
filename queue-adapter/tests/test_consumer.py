@@ -8,7 +8,12 @@ from pathlib import Path
 import httpx
 
 from app.consumer import Consumer
-from app.dispatch import DryRunDispatcher, HermesCliDispatcher, HttpDispatcher
+from app.dispatch import (
+    DryRunDispatcher,
+    HermesApiDispatcher,
+    HermesCliDispatcher,
+    HttpDispatcher,
+)
 
 from .conftest import FailingDispatcher, enqueue, make_job_failed_task, make_task
 
@@ -170,17 +175,85 @@ async def test_http_dispatcher_4xx_is_not_retryable_5xx_is() -> None:
 
 def test_hermes_cli_command_template_rendering(tmp_path) -> None:
     d = HermesCliDispatcher(
-        "hermes run --profile {agent} --file {prompt_file}", outbox_dir=str(tmp_path)
+        "hermes -p {agent} chat --oneshot -Q --query-file {prompt_file} -s {skill}",
+        outbox_dir=str(tmp_path),
     )
     cmd = d.build_command(make_task(), "p", tmp_path / "t.prompt.md")
     assert cmd == [
         "hermes",
-        "run",
-        "--profile",
+        "-p",
         "dev-frontend",
-        "--file",
+        "chat",
+        "--oneshot",
+        "-Q",
+        "--query-file",
         str(tmp_path / "t.prompt.md"),
+        "-s",
+        "resolve-issue",
     ]
+
+
+async def test_hermes_api_dispatcher_create_and_poll_completed() -> None:
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(f"{request.method} {request.url.path}")
+        if request.method == "POST" and request.url.path.endswith("/v1/runs"):
+            assert request.headers.get("Idempotency-Key") == "t-20261007-abc123"
+            assert request.headers.get("Authorization") == "Bearer api-key"
+            return httpx.Response(202, json={"run_id": "run_abc", "status": "queued"})
+        if request.method == "GET" and request.url.path.endswith("/v1/runs/run_abc"):
+            return httpx.Response(200, json={"run_id": "run_abc", "status": "completed"})
+        return httpx.Response(404)
+
+    d = HermesApiDispatcher(
+        "http://hermes:8642",
+        token="api-key",
+        poll_interval_seconds=0.01,
+        transport=httpx.MockTransport(handler),
+    )
+    result = await d.dispatch(make_task(), "PROMPT")
+    assert result.ok
+    assert "run_id=run_abc" in result.detail
+    assert "status=completed" in result.detail
+    assert any(c.startswith("POST ") for c in calls)
+    assert any(c.startswith("GET ") for c in calls)
+    await d.aclose()
+
+
+async def test_hermes_api_dispatcher_waiting_for_approval_is_ok() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(202, json={"run_id": "run_wait"})
+        return httpx.Response(200, json={"run_id": "run_wait", "status": "waiting_for_approval"})
+
+    d = HermesApiDispatcher(
+        "http://hermes:8642/",
+        poll_interval_seconds=0.01,
+        transport=httpx.MockTransport(handler),
+    )
+    result = await d.dispatch(make_task(), "PROMPT")
+    assert result.ok and "waiting_for_approval" in result.detail
+    await d.aclose()
+
+
+async def test_hermes_api_dispatcher_failed_run_is_retryable() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(202, json={"run_id": "run_fail"})
+        return httpx.Response(
+            200, json={"run_id": "run_fail", "status": "failed", "error": "boom"}
+        )
+
+    d = HermesApiDispatcher(
+        "http://hermes:8642",
+        poll_interval_seconds=0.01,
+        transport=httpx.MockTransport(handler),
+    )
+    result = await d.dispatch(make_task(), "PROMPT")
+    assert not result.ok and result.retryable is True
+    assert "boom" in result.detail
+    await d.aclose()
 
 
 async def test_hermes_cli_missing_binary_is_not_retryable(tmp_path) -> None:

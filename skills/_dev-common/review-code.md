@@ -1,9 +1,15 @@
 ---
 name: review-code
-owner: [dev-frontend, dev-backend]
-phase: 0
-hitl: ask before auto-fixing
-inputs: [task_id, project]
+description: Self-review staged/diff against project-standards.md before handoff; ask before auto-fixing.
+version: 1.0.0
+metadata:
+  hermes:
+    tags: [emaw, review]
+    category: emaw
+    owner: [dev-frontend, dev-backend]
+    phase: 0
+    hitl: ask before auto-fixing
+    inputs: [task_id, project]
 ---
 
 # Skill: review-code

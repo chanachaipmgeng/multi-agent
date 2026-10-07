@@ -1,55 +1,54 @@
-# Hermes profile: coordinator  (verify key names with `hermes config list` — DECISION-1)
-identity:
-  name: coordinator
-  role: project-coordinator
-  trace_prefix: coord
-  telegram_display: "EMAW Coordinator"
+# Hermes profile: coordinator — real schema (DECISION-1 / v0.21.5)
+# Secrets live in /opt/data/.env (TELEGRAM_BOT_TOKEN, TELEGRAM_ALLOWED_USERS,
+# OPENROUTER_API_KEY / LLM key, GITLAB_TOKEN, API_SERVER_KEY). See docs/hermes-capability-check.md.
 
 model:
-  primary: ${LLM_MODEL_COORDINATOR:-openrouter/anthropic/claude-3.5-sonnet}   # mid-tier, fast (routing/summary)
-  fallback: ${LLM_FALLBACK_MODEL:-openrouter/openai/gpt-4o-mini}
-  api_key_file: /run/secrets/llm_key_coordinator
-  max_context_tokens: 128000
+  provider: openrouter
+  default: anthropic/claude-sonnet-4
+
+fallback_providers:
+  - provider: openrouter
+    model: openai/gpt-4o-mini
 
 terminal:
-  backend: docker            # checklist #1 — never "host"
-  sandbox:
-    read_only_tools: true    # coordinator only inspects; never mutates repos
-    cpus: 1
-    memory: 2g
+  # DECISION-14 (compose): container is the sandbox — no docker.sock.
+  # On host/WSL2 Ubuntu Phase 0 path use: backend: docker + docker_image below.
+  backend: local
+  cwd: /workspace
+  timeout: 180
+  # docker_image: nousresearch/hermes-sandbox:desktop
+  # docker_mount_cwd_to_workspace: true
 
-telegram:
-  token_file: /run/secrets/telegram_token
-  allowed_users: ${TELEGRAM_ALLOWED_USERS}      # comma-separated Telegram user ids (D0.3)
-  approval_ui: inline_keyboard                  # fall back to "y/n" text if unsupported
+approvals:
+  mode: smart
+  deny:
+    - "git push* main*"
+    - "git push* master*"
+    - "git push* release/*"
+    - "docker system prune*"
+    - "*DROP TABLE*"
+    - "*DROP DATABASE*"
+    - "rm -rf /*"
+    - "rm -rf /"
 
-gitlab:
-  base_url: ${GITLAB_BASE_URL:-https://gitlab.com}
-  token_file: /run/secrets/gitlab_token_readonly   # scope: read_api only
+worktree: false          # coordinator never mutates repos
+worktree_sync: false
 
-workspace:
-  root: /workspace
-  mode: ro
+skills:
+  auto_load:
+    - human-approval-gate
+    - switch-context
 
-queue:
-  redis_url: redis://redis:6379/0
-  inbox_stream: stream:tasks
-  results_stream: stream:results
-  consumer_group: coordinator
-  heartbeat_seconds: 60
+database:
+  # Named volume preferred; delete is safe on Windows bind-mounts (WAL + drvfs).
+  journal_mode: delete
 
-task_store:
-  database_url_env: DATABASE_URL
-
-policy:
+# EMAW platform paths (read by skills / SOUL.md, not native Hermes keys)
+emaw:
   agent_md: /opt/data/AGENT.md
   platform_policy: /config/policies/platform-policy.yaml
   projects: /config/projects.yaml
   rbac: /opt/data/rbac.yaml
-
-budgets:
+  inbox_stream: stream:tasks
+  results_stream: stream:results
   token_budget_per_task: 50000
-
-skills_dir: /opt/data/skills
-memory_dir: /opt/data/memory
-log_level: ${HERMES_LOG_LEVEL:-info}

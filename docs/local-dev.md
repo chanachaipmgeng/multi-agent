@@ -1,4 +1,4 @@
-# Local development (WSL2 / Linux) — Phase 0
+# Local development (WSL2 / Linux / Docker Desktop) — Phase 0+
 
 ## 1. Host
 
@@ -7,13 +7,19 @@ make prereqs                        # D0.1 — git, docker + compose v2, python3
 ```
 
 WSL2 extras (from the source guide): `[boot] systemd=true` in `/etc/wsl.conf`, Docker Desktop →
-Settings → Resources → WSL Integration enabled for the distro, keep Windows from sleeping.
+Settings → Resources → WSL Integration enabled for an **Ubuntu** distro (not only `docker-desktop`),
+keep Windows from sleeping.
+
+See [`docs/hermes-capability-check.md`](hermes-capability-check.md) and [`docs/decisions.md`](decisions.md)
+(DECISION-1, DECISION-14).
 
 ## 2. Secrets
 
 ```bash
 make secrets-init                   # age key + .sops.yaml recipient
 cp .env.example .env && $EDITOR .env
+# Required for agents: SECRET_TELEGRAM_TOKEN, TELEGRAM_ALLOWED_USERS, SECRET_LLM_KEY_*,
+# SECRET_HERMES_API_KEY (Bearer for :8642)
 make secrets-encrypt                # → .env.enc (commit)
 make secrets-decrypt                # → secrets/* for compose
 ```
@@ -23,44 +29,50 @@ Quick dev box without SOPS: `cp .env.example .env && make secrets-dev`.
 ## 3. Platform stack
 
 ```bash
-make up                             # redis + postgres (+ migrations on first boot) + webhook-gateway + queue-adapter
+make up                             # redis + postgres (+ migrations) + webhook-gateway + queue-adapter
 curl -s localhost:8700/readyz       # {"status":"ok","checks":{"redis":true,"task_store":true}}
 make webhook-test                   # sample Issue Hook → {"status":"queued", ...}
 make webhook-test KIND=pipeline     # → pipeline_failed routed to devops
 scripts/send-test-webhook.sh issue --bad-token   # → HTTP 401
 make outbox                         # adapter (DISPATCHER=dryrun) wrote one prompt per task
-docker compose exec redis redis-cli XLEN stream:tasks
-docker compose exec redis redis-cli XLEN stream:results
-docker compose exec postgres psql -U emaw -c 'select task_id,type,state,assigned_to from tasks'
 ```
 
-Switch the adapter to a real Hermes with `ADAPTER_DISPATCHER=hermes_cli` (host install, mount the
-`hermes` binary) or `ADAPTER_DISPATCHER=http` + `HERMES_HTTP_URL=…` in `.env`, then `make up`.
-
-Ports (all bound to 127.0.0.1): gateway 8700, redis 6379, postgres 5432, Hermes dashboard 9119.
-Override with `GATEWAY_PORT`, `REDIS_PORT`, `POSTGRES_PORT` in `.env`.
+Ports (all bound to `127.0.0.1`): gateway 8700, redis 6379, postgres 5432,
+Hermes dashboard 9119, Hermes API 8642 (coordinator) / 8643 (dev-backend).
 
 ## 4. Hermes (single agent for Phase 0)
 
-Option A — host install (as in the source guide):
+### Option A — host install (Ubuntu WSL2 / Linux)
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh && bash install.sh
 hermes setup                                       # primary + fallback provider
-TELEGRAM_ALLOWED_USERS=<your id> make hermes-configure   # terminal.backend=docker, allowlist, tokens
-make skills-sync                                   # dev-flow, review-code, human-approval-gate
-hermes run "id"                                    # sandbox uid, not yours (checklist #1)
-hermes gateway run
+TELEGRAM_ALLOWED_USERS=<your id> make hermes-configure   # terminal.backend=docker, env secrets
+make skills-sync
+# copy or symlink hermes-data/dev-backend/skills → ~/.hermes/skills/
+hermes chat --oneshot -Q -q "id"                   # sandbox uid ≠ host (checklist #1)
+hermes gateway run                                 # Telegram + API :8642
 ```
 
-Option B — container profile:
+Real CLI keys (v0.21.5): `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS`, `GITLAB_TOKEN`,
+`API_SERVER_*`, `OPENROUTER_API_KEY` — **not** `telegram.token` / `gitlab.base_url`.
+
+### Option B — compose agents profile (DECISION-14: terminal.backend=local)
 
 ```bash
-docker compose --profile agents up -d dev-backend  # or coordinator / dev-frontend
+make secrets-dev                    # or secrets-decrypt
+make hermes-seed                    # hermes-data/<agent>/.env from secrets
+make skills-sync
+# Phase 0: start one worker (e.g. dev-backend) + optional coordinator
+docker compose --profile agents up -d dev-backend
+# or all six: make up-agents
 ```
 
-Then on Telegram: `ใช้ dev-flow ใน /workspace/sandbox-smoke เพิ่มฟังก์ชัน subtract พร้อม test`.
-Expected: commit on a work branch, `./test.sh` green, and an approval prompt *before* any push.
+Then set `ADAPTER_DISPATCHER=hermes_api` and `HERMES_API_URL=http://dev-backend:8642` in `.env`,
+`make up` again, and `make webhook-test` — adapter creates a Hermes `/v1/runs` job.
+
+On Telegram (coordinator): `ใช้ dev-flow ใน /workspace/sandbox-smoke เพิ่มฟังก์ชัน subtract พร้อม test`.
+Expected: commit on a work branch, `./test.sh` green, approval prompt *before* any push.
 
 ## 5. Onboard the pilot repo (D0.4)
 
@@ -68,16 +80,17 @@ Expected: commit on a work branch, `./test.sh` green, and an approval prompt *be
 make onboard KEY=backend-api URL=git@gitlab.com:acme/backend-api.git TEST="pytest -q"
 $EDITOR workspace/backend-api/project-standards.md
 $EDITOR config/projects.yaml            # real gitlab_project_id + path_with_namespace
+$EDITOR config/org.yaml                 # DECISION-5/11 placeholders
 docker compose restart webhook-gateway  # reloads projects.yaml
 ```
 
 ## 6. Tests & checks
 
 ```bash
-make test               # gateway unit tests (fakeredis, in-memory store)
+make test               # gateway + adapter unit tests
 make test-integration   # needs TEST_DATABASE_URL=postgresql://emaw:<pw>@localhost:5432/emaw
-make lint               # ruff
-make gitleaks           # secret scan
-make verify-phase0      # exit-criteria self-check
-make hooks              # pre-commit (gitleaks + ruff) on every commit
+make lint
+make gitleaks
+make verify-phase0
+make hooks
 ```

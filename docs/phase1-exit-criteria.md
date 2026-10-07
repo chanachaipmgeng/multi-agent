@@ -46,6 +46,19 @@ Legend: ✅ in repo & verified · 🧪 in repo, needs real environment · ☐ ma
 
 ## What Phase 1 did *not* change
 
-No gateway behaviour changes were needed — the Phase 0 gateway already met E2 (secret). The
-Hermes-facing interface (how the adapter invokes Hermes) is still an assumption (DECISION-1); the
-adapter is pluggable so confirming it is an env-var change (`DISPATCHER=hermes_cli|http`).
+No gateway behaviour changes were needed — the Phase 0 gateway already met E2 (secret).
+
+## DECISION-1 closed (2026-10-07)
+
+Hermes-facing interface is confirmed — use `ADAPTER_DISPATCHER=hermes_api` + `HERMES_API_URL`
+(`POST /v1/runs` with `Idempotency-Key`). CLI fallback:
+`hermes -p {agent} chat --oneshot -Q --query-file {prompt_file} -s {skill}`.
+See `docs/hermes-capability-check.md`.
+
+## Still blocked on org inputs
+
+| Decision | Fill in | Where |
+|---|---|---|
+| DECISION-5 | org domain + Cloudflare account | `config/org.yaml`, then `make tunnel-setup` |
+| DECISION-11 | pilot repo paths / project ids | `config/org.yaml` + `config/projects.yaml` |
+| DECISION-8 | approver/admin Telegram ids | `config/org.yaml` → `rbac.yaml` |

@@ -1,11 +1,11 @@
 """Dispatchers: how a prompt reaches the Hermes agent.
 
-Hermes' exact non-interactive interface is still to be confirmed (design DECISION-1, open
-question "HTTP/CLI interface for queue-adapter"), so the adapter is pluggable:
+Confirmed against Hermes Agent v0.21.5 (docs/hermes-capability-check.md, DECISION-1):
 
-* ``DryRunDispatcher``   — writes the prompt to an outbox directory (no Hermes needed; CI/dev)
-* ``HttpDispatcher``     — POSTs ``{task, prompt}`` to a URL (Hermes gateway webhook or a shim)
-* ``HermesCliDispatcher``— runs a shell template, e.g. ``hermes run --file {prompt_file}``
+* ``DryRunDispatcher``    — writes the prompt to an outbox directory (CI/dev)
+* ``HttpDispatcher``      — POSTs ``{task, prompt}`` to a shim URL (legacy/simple)
+* ``HermesApiDispatcher`` — ``POST /v1/runs`` + poll (preferred for long tasks)
+* ``HermesCliDispatcher`` — ``hermes -p … chat --oneshot -Q --query-file … -s …``
 """
 
 from __future__ import annotations
@@ -14,14 +14,20 @@ import asyncio
 import json
 import logging
 import shlex
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import urljoin
 
 import httpx
 
 log = logging.getLogger("emaw.adapter.dispatch")
+
+# Terminal statuses reported by Hermes /v1/runs (see API server docs).
+_TERMINAL = frozenset({"completed", "failed", "cancelled", "error", "stopped"})
+_WAITING = frozenset({"waiting_for_approval", "awaiting_approval"})
 
 
 @dataclass(slots=True)
@@ -81,9 +87,150 @@ class HttpDispatcher:
             return DispatchResult(ok=False, detail=f"http error: {exc}", retryable=True)
         if 200 <= r.status_code < 300:
             return DispatchResult(ok=True, detail=f"HTTP {r.status_code}")
-        # 4xx = our payload/auth is wrong → retrying will not help
         return DispatchResult(
             ok=False, detail=f"HTTP {r.status_code}: {r.text[:200]}", retryable=r.status_code >= 500
+        )
+
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+
+class HermesApiDispatcher:
+    """Preferred dispatcher: Hermes OpenAI-compatible API server on :8642.
+
+    Creates a run with ``Idempotency-Key: <task_id>``, then polls ``GET /v1/runs/{id}``
+    until a terminal status (or ``waiting_for_approval``, which we treat as success —
+    the human gate continues outside the adapter).
+    """
+
+    name = "hermes_api"
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        token: str | None = None,
+        timeout_seconds: int = 1_800,
+        poll_interval_seconds: float = 2.0,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ) -> None:
+        self._base = base_url.rstrip("/") + "/"
+        self._timeout = timeout_seconds
+        self._poll = poll_interval_seconds
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        # Connect/read timeouts for individual HTTP calls; overall budget is self._timeout.
+        self._client = httpx.AsyncClient(
+            headers=headers, timeout=httpx.Timeout(60.0, connect=10.0), transport=transport
+        )
+
+    def _url(self, path: str) -> str:
+        return urljoin(self._base, path.lstrip("/"))
+
+    async def dispatch(self, task: dict[str, Any], prompt: str) -> DispatchResult:
+        task_id = task["task_id"]
+        skill = task.get("skill") or "dev-flow"
+        body = {
+            "input": prompt,
+            "metadata": {
+                "task_id": task_id,
+                "trace_id": task.get("trace_id"),
+                "skill": skill,
+                "assigned_to": task.get("assigned_to"),
+                "project": task.get("project"),
+            },
+        }
+        # Hermes accepts OpenAI-style messages as well; prefer a simple prompt field + messages.
+        body["messages"] = [{"role": "user", "content": prompt}]
+        headers = {"Idempotency-Key": task_id[:255]}
+        try:
+            r = await self._client.post(self._url("/v1/runs"), json=body, headers=headers)
+        except httpx.HTTPError as exc:
+            return DispatchResult(ok=False, detail=f"create run http error: {exc}", retryable=True)
+
+        if r.status_code == 409:
+            return DispatchResult(
+                ok=False,
+                detail=f"idempotency conflict for {task_id}: {r.text[:200]}",
+                retryable=False,
+            )
+        if not (200 <= r.status_code < 300):
+            return DispatchResult(
+                ok=False,
+                detail=f"create run HTTP {r.status_code}: {r.text[:200]}",
+                retryable=r.status_code >= 500,
+            )
+
+        try:
+            payload = r.json()
+        except ValueError:
+            return DispatchResult(ok=False, detail="create run: non-JSON body", retryable=True)
+
+        run_id = payload.get("run_id") or payload.get("id")
+        if not run_id:
+            return DispatchResult(
+                ok=False, detail=f"create run missing run_id: {payload!r}"[:300], retryable=True
+            )
+        replayed = r.headers.get("Idempotency-Replayed", "").lower() == "true"
+        log.info(
+            "hermes_api: created run %s for %s (replayed=%s)", run_id, task_id, replayed
+        )
+        return await self._poll_until_done(run_id, task_id)
+
+    async def _poll_until_done(self, run_id: str, task_id: str) -> DispatchResult:
+        deadline = time.monotonic() + self._timeout
+        last_status = "unknown"
+        while time.monotonic() < deadline:
+            try:
+                r = await self._client.get(self._url(f"/v1/runs/{run_id}"))
+            except httpx.HTTPError as exc:
+                log.warning("hermes_api: poll error for %s: %s", run_id, exc)
+                await asyncio.sleep(self._poll)
+                continue
+            if r.status_code >= 500:
+                await asyncio.sleep(self._poll)
+                continue
+            if r.status_code == 404:
+                return DispatchResult(
+                    ok=False, detail=f"run {run_id} not found", retryable=True
+                )
+            if r.status_code >= 400:
+                return DispatchResult(
+                    ok=False,
+                    detail=f"poll HTTP {r.status_code}: {r.text[:200]}",
+                    retryable=False,
+                )
+            try:
+                data = r.json()
+            except ValueError:
+                await asyncio.sleep(self._poll)
+                continue
+            last_status = str(data.get("status") or data.get("state") or "unknown").lower()
+            if last_status in _WAITING:
+                # Human gate is outside the adapter — count as successfully handed off.
+                return DispatchResult(
+                    ok=True,
+                    detail=f"run_id={run_id} status={last_status} task_id={task_id}",
+                )
+            if last_status in _TERMINAL:
+                if last_status == "completed":
+                    return DispatchResult(
+                        ok=True,
+                        detail=f"run_id={run_id} status=completed task_id={task_id}",
+                    )
+                err = data.get("error") or data.get("detail") or last_status
+                return DispatchResult(
+                    ok=False,
+                    detail=f"run_id={run_id} status={last_status}: {err}"[:500],
+                    retryable=last_status in {"failed", "error"},
+                )
+            await asyncio.sleep(self._poll)
+
+        return DispatchResult(
+            ok=False,
+            detail=f"run_id={run_id} poll timed out after {self._timeout}s (last={last_status})",
+            retryable=True,
         )
 
     async def aclose(self) -> None:
@@ -134,6 +281,13 @@ class HermesCliDispatcher:
 
 
 def build_dispatcher(settings: Any) -> Dispatcher:
+    if settings.dispatcher == "hermes_api":
+        return HermesApiDispatcher(
+            settings.hermes_api_url,
+            token=settings.hermes_api_token,
+            timeout_seconds=settings.dispatch_timeout_seconds,
+            poll_interval_seconds=settings.hermes_api_poll_interval_seconds,
+        )
     if settings.dispatcher == "http":
         return HttpDispatcher(settings.hermes_http_url, token=settings.hermes_http_token)
     if settings.dispatcher == "hermes_cli":

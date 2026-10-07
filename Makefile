@@ -46,8 +46,13 @@ up: ## start redis + postgres + webhook-gateway + queue-adapter
 	@test -s secrets/gitlab_webhook_secret || (echo "run 'make secrets-decrypt' (or secrets-dev) first"; exit 1)
 	$(COMPOSE) up -d --build redis postgres webhook-gateway queue-adapter
 
-up-agents: ## also start the 6 Hermes profile containers
+up-agents: ## seed Hermes .env + skills, then start agent profile containers
+	@test -s secrets/hermes_api_key || (echo "set SECRET_HERMES_API_KEY in .env and re-run secrets-dev/decrypt"; exit 1)
+	@scripts/hermes-seed-env.sh
+	@scripts/sync-skills.sh
 	$(COMPOSE) --profile agents up -d
+hermes-seed: ## write hermes-data/<agent>/.env from ./secrets/*
+	@scripts/hermes-seed-env.sh
 
 up-ingress: ## start the cloudflared tunnel connector (needs secrets/tunnel_token)
 	$(COMPOSE) --profile ingress up -d cloudflared
@@ -114,4 +119,4 @@ webhook-test: ## send a sample Issue Hook to the running gateway (KIND=issue|pip
 verify-phase0: ## run the Phase 0 exit-criteria self-check
 	@scripts/verify-phase0.sh
 
-.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents up-ingress down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration lint gitleaks webhook-test verify-phase0
+.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration lint gitleaks webhook-test verify-phase0

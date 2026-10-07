@@ -1,10 +1,16 @@
 ---
 name: human-approval-gate
-owner: coordinator
-phase: 0
-hitl: this skill IS the gate
-inputs: [task_id, action, payload, requested_by]
-policy: /config/policies/platform-policy.yaml#human_in_the_loop
+description: HITL gate for push/MR, deploy, migration, infra — silence or timeout means no action.
+version: 1.0.0
+metadata:
+  hermes:
+    tags: [emaw, hitl, approval]
+    category: emaw
+    owner: coordinator
+    phase: 0
+    hitl: this skill IS the gate
+    inputs: [task_id, action, payload, requested_by]
+    policy: /config/policies/platform-policy.yaml#human_in_the_loop
 ---
 
 # Skill: human-approval-gate

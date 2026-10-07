@@ -1,57 +1,51 @@
-# Hermes profile: reviewer  (verify key names with `hermes config list` — DECISION-1)
-identity:
-  name: reviewer
-  role: code-reviewer
-  trace_prefix: rev
+# Hermes profile: reviewer — real schema (DECISION-1 / v0.21.5)
 
 model:
-  primary: ${LLM_MODEL_REASONING:-openrouter/anthropic/claude-3.5-sonnet}   # high-reasoning model
-  fallback: ${LLM_FALLBACK_MODEL:-openrouter/openai/o3-mini}
-  api_key_file: /run/secrets/llm_key_reviewer
-  max_context_tokens: 200000
-  local_endpoint: http://inference-ollama:11434
+  provider: openrouter
+  default: anthropic/claude-sonnet-4
+
+fallback_providers:
+  - provider: openrouter
+    model: openai/o3-mini
 
 terminal:
-  backend: docker
-  sandbox:
-    image: ${SANDBOX_IMAGE_NODE:-node:20-bookworm}   # socraticode CLI is a Node tool
-    cpus: 2
-    memory: 4g
-    pids_limit: 512
-    command_timeout_minutes: 20
+  backend: local
+  cwd: /workspace
+  timeout: 1200
 
-gitlab:
-  base_url: ${GITLAB_BASE_URL:-https://gitlab.com}
-  token_file: /run/secrets/gitlab_token_readonly   # read_api only
+approvals:
+  mode: smart
+  deny:
+    - "git push*"
+    - "git commit*"
+    - "docker system prune*"
+    - "*DROP TABLE*"
+    - "rm -rf /*"
+    - "rm -rf /"
 
-workspace:
-  root: /workspace
-  mode: ro
-  worktrees: /workspace/.worktrees
+worktree: false
+worktree_sync: false
 
-# SocratiCode via CLI + MCP (DECISION-6). Enabled in Phase 2.
+skills:
+  auto_load:
+    - review-with-socraticode
+
+# SocratiCode MCP (DECISION-6) — enable in Phase 2 after license/key confirmed
 mcp_servers:
   socraticode:
-    enabled: false
-    command: ["npx", "-y", "socraticode", "mcp"]
-    env:
-      SOCRATICODE_API_KEY_FILE: /run/secrets/socraticode_key
-    tools: [analyze_blast_radius, get_dependencies]
+    # Disabled until DECISION-6 license holder + SECRET_SOCRATICODE_KEY are set
+    # command: npx
+    # args: ["-y", "socraticode", "mcp"]
+    # env:
+    #   SOCRATICODE_API_KEY: ${SOCRATICODE_API_KEY}
 
-queue:
-  redis_url: redis://redis:6379/0
-  inbox_stream: stream:reviewer
-  results_stream: stream:results
-  consumer_group: reviewer
+database:
+  journal_mode: delete
 
-policy:
+emaw:
   agent_md: /opt/data/AGENT.md
   platform_policy: /config/policies/platform-policy.yaml
   projects: /config/projects.yaml
-
-budgets:
+  inbox_stream: stream:reviewer
+  results_stream: stream:results
   token_budget_per_task: 300000
-
-skills_dir: /opt/data/skills
-memory_dir: /opt/data/memory
-log_level: ${HERMES_LOG_LEVEL:-info}

@@ -1,50 +1,46 @@
-# Hermes profile: qa  (verify key names with `hermes config list` — DECISION-1)
-identity:
-  name: qa
-  role: qa-automation
-  trace_prefix: qa
+# Hermes profile: qa — real schema (DECISION-1 / v0.21.5)
 
 model:
-  primary: ${LLM_MODEL_MID:-openrouter/anthropic/claude-3.5-haiku}   # mid-tier
-  fallback: ${LLM_FALLBACK_MODEL:-openrouter/openai/gpt-4o-mini}
-  api_key_file: /run/secrets/llm_key_qa
-  max_context_tokens: 128000
+  provider: openrouter
+  default: anthropic/claude-3.5-haiku
+
+fallback_providers:
+  - provider: openrouter
+    model: openai/gpt-4o-mini
 
 terminal:
-  backend: docker
-  sandbox:
-    image: ${SANDBOX_IMAGE_PLAYWRIGHT:-mcr.microsoft.com/playwright:v1.47.0-jammy}
-    cpus: 2
-    memory: 6g
-    pids_limit: 1024
-    command_timeout_minutes: 20
-    e2e_port_range: "3001-3010"
+  backend: local
+  cwd: /workspace
+  timeout: 1200
 
-gitlab:
-  base_url: ${GITLAB_BASE_URL:-https://gitlab.com}
-  token_file: /run/secrets/gitlab_token_qa   # read_api + write_repository
+approvals:
+  mode: smart
+  deny:
+    - "git push* main*"
+    - "git push* master*"
+    - "git push* release/*"
+    - "docker system prune*"
+    - "*DROP TABLE*"
+    - "rm -rf /*"
+    - "rm -rf /"
 
-workspace:
-  root: /workspace
-  mode: rw
-  allowed_paths: ["e2e/**", "tests/**", "**/*.spec.ts", "**/test_*.py", "playwright.config.*"]
-  worktrees: /workspace/.worktrees
+worktree: true
+worktree_sync: true
 
-queue:
-  redis_url: redis://redis:6379/0
-  inbox_stream: stream:qa
-  results_stream: stream:results
-  consumer_group: qa
+skills:
+  auto_load:
+    - write-e2e
 
-policy:
+database:
+  journal_mode: delete
+
+emaw:
   agent_md: /opt/data/AGENT.md
   platform_policy: /config/policies/platform-policy.yaml
   projects: /config/projects.yaml
-
-budgets:
+  allowed_paths: ["e2e/**", "tests/**", "**/*.spec.ts", "**/test_*.py", "playwright.config.*"]
+  inbox_stream: stream:qa
+  results_stream: stream:results
   token_budget_per_task: 200000
   self_heal_limit: 3
-
-skills_dir: /opt/data/skills
-memory_dir: /opt/data/memory
-log_level: ${HERMES_LOG_LEVEL:-info}
+  e2e_port_range: "3001-3010"

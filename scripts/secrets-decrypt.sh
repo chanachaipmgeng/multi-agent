@@ -42,7 +42,8 @@ done <<< "$SOURCE"
 # compose declares every secret file; create empty placeholders for the ones not set yet
 for name in gitlab_webhook_secret pg_password tunnel_token telegram_token socraticode_key \
             llm_key_coordinator llm_key_dev_frontend llm_key_dev_backend llm_key_reviewer llm_key_devops llm_key_qa \
-            gitlab_token_readonly gitlab_token_frontend gitlab_token_backend gitlab_token_ci gitlab_token_qa; do
+            gitlab_token_readonly gitlab_token_frontend gitlab_token_backend gitlab_token_ci gitlab_token_qa \
+            hermes_api_key; do
   [ -f "secrets/$name" ] || { : > "secrets/$name"; chmod 600 "secrets/$name"; }
 done
 

@@ -6,8 +6,9 @@ Incident Response: มนุษย์สั่งงานผ่าน Telegram,
 Webhook Gateway, Coordinator มอบหมายงานให้ worker agents ที่ทำงานใน Docker sandbox และทุก action ที่มี
 ผลกระทบสูงต้องผ่าน Human-in-the-Loop
 
-สถานะ: **Phase 0 — Foundation ✅ · Phase 1 — Permanent Ingress & GitLab Integration (in progress)**
-ดู [`docs/phase0-exit-criteria.md`](docs/phase0-exit-criteria.md) และ [`docs/phase1-exit-criteria.md`](docs/phase1-exit-criteria.md)
+สถานะ: **Phase 0 — Foundation (code ✅ · live exit criteria ⏳)** · **Phase 1 — tooling ✅ · blocked on DECISION-5/11**
+Hermes Agent **v0.21.5** capability check: [`docs/hermes-capability-check.md`](docs/hermes-capability-check.md) · decisions: [`docs/decisions.md`](docs/decisions.md)
+ดู [`docs/phase0-exit-criteria.md`](docs/phase0-exit-criteria.md) / [`docs/phase0-runbook.md`](docs/phase0-runbook.md) และ [`docs/phase1-exit-criteria.md`](docs/phase1-exit-criteria.md)
 เอกสารออกแบบฉบับเต็ม: *Enterprise Multi-Agent Workspace — System Design Document v1.1*
 
 ## Architecture (ย่อ)
@@ -68,18 +69,23 @@ scripts/send-test-webhook.sh issue --bad-token    # → HTTP 401
 make outbox                              # prompts the adapter built for Hermes (DISPATCHER=dryrun)
 docker compose exec postgres psql -U emaw -c 'select task_id,type,state,assigned_to from tasks'
 
-# 4) tests
-make test                                # 37 gateway + 22 adapter unit tests
+# 4) Hermes agent (needs Telegram + LLM + SECRET_HERMES_API_KEY in .env)
+make hermes-seed && make skills-sync
+docker compose --profile agents up -d dev-backend   # or: make up-agents
+# then ADAPTER_DISPATCHER=hermes_api HERMES_API_URL=http://dev-backend:8642 → recreate queue-adapter
+
+# 5) tests
+make test                                # gateway + adapter unit tests (incl. hermes_api dispatcher)
 make test-integration                    # +3 against Postgres (TEST_DATABASE_URL=...)
 make verify-phase0                       # Phase 0 exit-criteria self-check
 ```
 
-Phase 1 (ต้องมีโดเมน Cloudflare + GitLab จริง): `make tunnel-setup HOST=webhook.<org>.com SERVICE=1` →
+Phase 1 (ต้องมีโดเมน Cloudflare + GitLab จริง): กรอก [`config/org.yaml`](config/org.yaml) →
+`make tunnel-setup HOST=webhook.<org>.com SERVICE=1` →
 `make gitlab-webhook PROJECT=<group>/<repo> URL=https://webhook.<org>.com` → `make gitlab-token-check` →
 `make tunnel-status URL=https://webhook.<org>.com` — ดู [`docs/gitlab-setup.md`](docs/gitlab-setup.md)
 
-Hermes single agent (Phase 0, บน WSL2): ดู [`docs/local-dev.md`](docs/local-dev.md) §4 —
-`hermes setup` → `TELEGRAM_ALLOWED_USERS=<id> make hermes-configure` → `make skills-sync` → `hermes gateway run`
+Hermes (Phase 0): ดู [`docs/local-dev.md`](docs/local-dev.md) §4 และ [`docs/phase0-runbook.md`](docs/phase0-runbook.md)
 
 ## Gateway contract
 

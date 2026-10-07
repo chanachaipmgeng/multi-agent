@@ -1,11 +1,17 @@
 ---
 name: incident-triage
-owner: devops
-phase: 1
-hitl: push hotfix branch + MR via human-approval-gate; deploy never without `approver`
-inputs: [task_id, trace_id, project, pipeline_id, job_id, job_name, stage, ref, sha, failure_reason, failed_jobs, job_trace|job_traces, branch, workspace_path]
-triggers: GitLab Pipeline Hook (status=failed) / Job Hook (build_status=failed, allow_failure=false)
-sla: ข้อความวิเคราะห์สาเหตุถึงมนุษย์ภายใน 2 นาที
+description: Analyse failed GitLab pipeline/job traces, propose hotfix, gate push/MR; never deploy alone.
+version: 1.0.0
+metadata:
+  hermes:
+    tags: [emaw, devops, incident]
+    category: emaw
+    owner: devops
+    phase: 1
+    hitl: push hotfix + MR via human-approval-gate; deploy needs approver
+    inputs: [task_id, trace_id, project, pipeline_id, job_id, job_name, stage, ref, sha, failure_reason, failed_jobs, job_trace|job_traces, branch, workspace_path]
+    triggers: GitLab Pipeline/Job failed hooks
+    sla: triage message to human within 2 minutes
 ---
 
 # Skill: incident-triage

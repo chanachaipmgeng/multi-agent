@@ -1,0 +1,33 @@
+# Organisation placeholders from design §13 — fill before closing Phase 1.
+# Not secrets. Commit real values once confirmed (DECISION-5, DECISION-11, …).
+
+org:
+  domain: "<to confirm>"                    # DECISION-5 — e.g. example.com
+  cloudflare_account_owner: "<to confirm>"  # DECISION-5
+  webhook_hostname: "webhook.<org-domain>"  # → WEBHOOK_PUBLIC_URL
+  agents_hostname: "agents.<org-domain>"    # dashboard via Cloudflare Access (Phase 4)
+  grafana_hostname: "grafana.<org-domain>"
+
+hosting:
+  production_vm: "<to confirm>"             # DECISION-2 — on-prem or cloud
+  hermes_version: "0.21.5"                  # DECISION-1 — see docs/hermes-capability-check.md
+  hermes_image_digest: "sha256:d4da4a40cd7a28aba983775d9fd31d94cbf153eeb0cb9e844d6d0f612b7c24db"
+
+pilot_repos:                                # DECISION-11
+  frontend_app:
+    gitlab_path: "<to confirm>"             # e.g. acme/frontend-app
+    gitlab_project_id: null
+  backend_api:
+    gitlab_path: "<to confirm>"
+    gitlab_project_id: null
+
+roles:                                      # DECISION-8 — copy into hermes-data/coordinator/rbac.yaml
+  admin: []
+  approver: []
+  developer: []
+
+socraticode:                                # DECISION-6
+  license_holder: "<to confirm>"
+  mode: "cli+mcp"                           # decided; enable when key present
+
+sandbox_strategy: "compose-local"           # DECISION-14 — see docs/decisions.md

@@ -9,21 +9,21 @@
 # Secrets are file-based (./secrets/*, created by `make secrets-decrypt` from .env.enc via SOPS).
 # No service publishes a port outside 127.0.0.1; external traffic arrives only via the tunnel.
 
+# Hermes Agent v0.21.5 (DECISION-1). Official image uses s6-overlay ENTRYPOINT as root —
+# do NOT set user:/read_only: (they break supervision). Isolation = no docker.sock,
+# scoped mounts, security_opt, DECISION-14 terminal.backend=local inside the container.
 x-hermes-common: &hermes-common
-  # TODO(DECISION-1 / E12): pin to a digest once the Hermes version is confirmed:
-  #   image: nousresearch/hermes-agent@sha256:<digest>
-  image: ${HERMES_IMAGE:-nousresearch/hermes-agent:latest}
+  image: ${HERMES_IMAGE:-nousresearch/hermes-agent@sha256:d4da4a40cd7a28aba983775d9fd31d94cbf153eeb0cb9e844d6d0f612b7c24db}
   restart: unless-stopped
-  user: "1000:1000"
-  read_only: true
-  tmpfs: ["/tmp"]
-  cap_drop: ["ALL"]
   security_opt: ["no-new-privileges:true"]
   environment:
     - TZ=${TZ:-Asia/Bangkok}
     - HERMES_LOG_LEVEL=${HERMES_LOG_LEVEL:-info}
-    - HERMES_DATA_DIR=/opt/data
-    - REDIS_URL=redis://redis:6379/0
+    - HERMES_HOME=/opt/data
+    - API_SERVER_ENABLED=true
+    - API_SERVER_HOST=0.0.0.0
+    - API_SERVER_PORT=8642
+    - API_SERVER_KEY_FILE=/run/secrets/hermes_api_key
   logging:
     driver: json-file
     options: { max-size: "50m", max-file: "5" }
@@ -108,14 +108,17 @@ services:
       - CONSUMER_GROUP=hermes-single
       - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
       - PG_PASSWORD_FILE=/run/secrets/pg_password
-      - DISPATCHER=${ADAPTER_DISPATCHER:-dryrun}          # dryrun | http | hermes_cli
-      - HERMES_HTTP_URL=${HERMES_HTTP_URL:-}              # e.g. http://coordinator:8642/webhook/task
+      - DISPATCHER=${ADAPTER_DISPATCHER:-dryrun}          # dryrun | hermes_api | hermes_cli | http
+      - HERMES_API_URL=${HERMES_API_URL:-http://dev-backend:8642}
+      - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
+      - HERMES_HTTP_URL=${HERMES_HTTP_URL:-}
+      - HERMES_CLI_TEMPLATE=${HERMES_CLI_TEMPLATE:-hermes -p {agent} chat --oneshot -Q --query-file {prompt_file} -s {skill}}
       - OUTBOX_DIR=/var/lib/queue-adapter/outbox
       - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
       - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
       - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
-    secrets: [pg_password, gitlab_token_readonly, telegram_token]
+    secrets: [pg_password, gitlab_token_readonly, telegram_token, hermes_api_key]
     volumes: ["adapter-outbox:/var/lib/queue-adapter"]
     networks: [control, workers]
     depends_on:
@@ -141,6 +144,9 @@ services:
     restart: unless-stopped
 
   # ------------------------------------------------- hermes agent profiles
+  # Mutable state lives in named volumes (avoids SQLite WAL corruption on Windows
+  # bind-mounts). Seed files (config/SOUL/AGENT/skills/.env) are bind-mounted on top.
+  # Run `scripts/hermes-seed-env.sh` + `make skills-sync` before `up-agents`.
   coordinator:
     <<: *hermes-common
     container_name: emaw-coordinator
@@ -148,16 +154,27 @@ services:
     environment:
       - TZ=${TZ:-Asia/Bangkok}
       - HERMES_LOG_LEVEL=${HERMES_LOG_LEVEL:-info}
-      - HERMES_DATA_DIR=/opt/data
-      - HERMES_PROFILE=coordinator
-      - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://emaw:$${PG_PASSWORD}@postgres:5432/emaw
+      - HERMES_HOME=/opt/data
+      - API_SERVER_ENABLED=true
+      - API_SERVER_HOST=0.0.0.0
+      - API_SERVER_PORT=8642
+      - API_SERVER_KEY_FILE=/run/secrets/hermes_api_key
+      - HERMES_DASHBOARD=1
+      - HERMES_DASHBOARD_HOST=0.0.0.0
+      - TELEGRAM_ALLOWED_USERS=${TELEGRAM_ALLOWED_USERS:-}
     volumes:
-      - ./hermes-data/coordinator:/opt/data
+      - hermes-coordinator-data:/opt/data
+      - ./hermes-data/coordinator/config.yaml:/opt/data/config.yaml:ro
+      - ./hermes-data/coordinator/SOUL.md:/opt/data/SOUL.md:ro
+      - ./hermes-data/coordinator/AGENT.md:/opt/data/AGENT.md:ro
+      - ./hermes-data/coordinator/skills:/opt/data/skills:ro
+      - ./hermes-data/coordinator/.env:/opt/data/.env:ro
       - ./workspace:/workspace:ro
       - ./config:/config:ro
-    secrets: [telegram_token, llm_key_coordinator, gitlab_token_readonly, pg_password]
-    ports: ["127.0.0.1:${HERMES_DASHBOARD_PORT:-9119}:9119"]   # local only; Cloudflare Access in Phase 4
+    secrets: [telegram_token, llm_key_coordinator, gitlab_token_readonly, pg_password, hermes_api_key]
+    ports:
+      - "127.0.0.1:${HERMES_DASHBOARD_PORT:-9119}:9119"
+      - "127.0.0.1:${HERMES_API_PORT:-8642}:8642"
     networks: [control, workers]
 
   dev-frontend:
@@ -165,11 +182,16 @@ services:
     container_name: emaw-dev-frontend
     command: ["gateway", "run"]
     volumes:
-      - ./hermes-data/dev-frontend:/opt/data
+      - hermes-dev-frontend-data:/opt/data
+      - ./hermes-data/dev-frontend/config.yaml:/opt/data/config.yaml:ro
+      - ./hermes-data/dev-frontend/SOUL.md:/opt/data/SOUL.md:ro
+      - ./hermes-data/dev-frontend/AGENT.md:/opt/data/AGENT.md:ro
+      - ./hermes-data/dev-frontend/skills:/opt/data/skills:ro
+      - ./hermes-data/dev-frontend/.env:/opt/data/.env:ro
       - ./workspace/frontend-app:/workspace/frontend-app
       - ./workspace/.worktrees:/workspace/.worktrees
       - ./config:/config:ro
-    secrets: [llm_key_dev_frontend, gitlab_token_frontend]
+    secrets: [llm_key_dev_frontend, gitlab_token_frontend, hermes_api_key]
     networks: [workers]
     deploy: { resources: { limits: { cpus: "2.0", memory: 4G } } }
 
@@ -177,12 +199,27 @@ services:
     <<: *hermes-common
     container_name: emaw-dev-backend
     command: ["gateway", "run"]
+    environment:
+      - TZ=${TZ:-Asia/Bangkok}
+      - HERMES_LOG_LEVEL=${HERMES_LOG_LEVEL:-info}
+      - HERMES_HOME=/opt/data
+      - API_SERVER_ENABLED=true
+      - API_SERVER_HOST=0.0.0.0
+      - API_SERVER_PORT=8642
+      - API_SERVER_KEY_FILE=/run/secrets/hermes_api_key
     volumes:
-      - ./hermes-data/dev-backend:/opt/data
+      - hermes-dev-backend-data:/opt/data
+      - ./hermes-data/dev-backend/config.yaml:/opt/data/config.yaml:ro
+      - ./hermes-data/dev-backend/SOUL.md:/opt/data/SOUL.md:ro
+      - ./hermes-data/dev-backend/AGENT.md:/opt/data/AGENT.md:ro
+      - ./hermes-data/dev-backend/skills:/opt/data/skills:ro
+      - ./hermes-data/dev-backend/.env:/opt/data/.env:ro
       - ./workspace/backend-api:/workspace/backend-api
+      - ./examples/sandbox-smoke:/workspace/sandbox-smoke
       - ./workspace/.worktrees:/workspace/.worktrees
       - ./config:/config:ro
-    secrets: [llm_key_dev_backend, gitlab_token_backend]
+    secrets: [llm_key_dev_backend, gitlab_token_backend, hermes_api_key]
+    ports: ["127.0.0.1:${HERMES_BACKEND_API_PORT:-8643}:8642"]
     networks: [workers]
     deploy: { resources: { limits: { cpus: "2.0", memory: 4G } } }
 
@@ -191,10 +228,15 @@ services:
     container_name: emaw-reviewer
     command: ["gateway", "run"]
     volumes:
-      - ./hermes-data/reviewer:/opt/data
+      - hermes-reviewer-data:/opt/data
+      - ./hermes-data/reviewer/config.yaml:/opt/data/config.yaml:ro
+      - ./hermes-data/reviewer/SOUL.md:/opt/data/SOUL.md:ro
+      - ./hermes-data/reviewer/AGENT.md:/opt/data/AGENT.md:ro
+      - ./hermes-data/reviewer/skills:/opt/data/skills:ro
+      - ./hermes-data/reviewer/.env:/opt/data/.env:ro
       - ./workspace:/workspace:ro
       - ./config:/config:ro
-    secrets: [llm_key_reviewer, socraticode_key, gitlab_token_readonly]
+    secrets: [llm_key_reviewer, socraticode_key, gitlab_token_readonly, hermes_api_key]
     networks: [workers]
 
   devops:
@@ -202,10 +244,15 @@ services:
     container_name: emaw-devops
     command: ["gateway", "run"]
     volumes:
-      - ./hermes-data/devops:/opt/data
+      - hermes-devops-data:/opt/data
+      - ./hermes-data/devops/config.yaml:/opt/data/config.yaml:ro
+      - ./hermes-data/devops/SOUL.md:/opt/data/SOUL.md:ro
+      - ./hermes-data/devops/AGENT.md:/opt/data/AGENT.md:ro
+      - ./hermes-data/devops/skills:/opt/data/skills:ro
+      - ./hermes-data/devops/.env:/opt/data/.env:ro
       - ./workspace:/workspace
       - ./config:/config:ro
-    secrets: [llm_key_devops, gitlab_token_ci]
+    secrets: [llm_key_devops, gitlab_token_ci, hermes_api_key]
     networks: [workers]
 
   qa:
@@ -213,10 +260,15 @@ services:
     container_name: emaw-qa
     command: ["gateway", "run"]
     volumes:
-      - ./hermes-data/qa:/opt/data
+      - hermes-qa-data:/opt/data
+      - ./hermes-data/qa/config.yaml:/opt/data/config.yaml:ro
+      - ./hermes-data/qa/SOUL.md:/opt/data/SOUL.md:ro
+      - ./hermes-data/qa/AGENT.md:/opt/data/AGENT.md:ro
+      - ./hermes-data/qa/skills:/opt/data/skills:ro
+      - ./hermes-data/qa/.env:/opt/data/.env:ro
       - ./workspace:/workspace
       - ./config:/config:ro
-    secrets: [llm_key_qa, gitlab_token_qa]
+    secrets: [llm_key_qa, gitlab_token_qa, hermes_api_key]
     networks: [workers]
     deploy: { resources: { limits: { cpus: "2.0", memory: 6G } } }   # Playwright
 
@@ -245,6 +297,7 @@ secrets:
   gitlab_token_backend:  { file: ./secrets/gitlab_token_backend }
   gitlab_token_ci:       { file: ./secrets/gitlab_token_ci }
   gitlab_token_qa:       { file: ./secrets/gitlab_token_qa }
+  hermes_api_key:        { file: ./secrets/hermes_api_key }
 
 networks:
   edge: {}
@@ -257,3 +310,9 @@ volumes:
   pg-data: {}
   adapter-outbox: {}
   ollama-data: {}
+  hermes-coordinator-data: {}
+  hermes-dev-frontend-data: {}
+  hermes-dev-backend-data: {}
+  hermes-reviewer-data: {}
+  hermes-devops-data: {}
+  hermes-qa-data: {}

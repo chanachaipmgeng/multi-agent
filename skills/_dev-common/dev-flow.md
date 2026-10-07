@@ -1,9 +1,15 @@
 ---
 name: dev-flow
-owner: [dev-frontend, dev-backend]
-phase: 0
-hitl: push via human-approval-gate (coordinator)
-inputs: [task_id, project, branch, instruction, test_command, self_heal_limit]
+description: Safe feature/bugfix flow — branch, code, test, self-heal ≤3, commit; never push without approval.
+version: 1.0.0
+metadata:
+  hermes:
+    tags: [emaw, development, git]
+    category: emaw
+    owner: [dev-frontend, dev-backend]
+    phase: 0
+    hitl: push via human-approval-gate (coordinator)
+    inputs: [task_id, project, branch, instruction, test_command, self_heal_limit]
 ---
 
 # Skill: dev-flow

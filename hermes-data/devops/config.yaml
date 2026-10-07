@@ -1,49 +1,46 @@
-# Hermes profile: devops  (verify key names with `hermes config list` — DECISION-1)
-identity:
-  name: devops
-  role: devops-incident-responder
-  trace_prefix: ops
+# Hermes profile: devops — real schema (DECISION-1 / v0.21.5)
 
 model:
-  primary: ${LLM_MODEL_CODING:-openrouter/anthropic/claude-3.5-sonnet}
-  fallback: ${LLM_FALLBACK_MODEL:-openrouter/openai/gpt-4o}
-  api_key_file: /run/secrets/llm_key_devops
-  max_context_tokens: 200000
+  provider: openrouter
+  default: anthropic/claude-sonnet-4
+
+fallback_providers:
+  - provider: openrouter
+    model: openai/gpt-4o
 
 terminal:
-  backend: docker
-  sandbox:
-    image: ${SANDBOX_IMAGE_DEVOPS:-docker:27-cli}   # docker CLI for `docker build` against a DinD sidecar, never the host socket
-    cpus: 2
-    memory: 4g
-    pids_limit: 512
-    command_timeout_minutes: 20
+  backend: local
+  cwd: /workspace
+  timeout: 1200
 
-gitlab:
-  base_url: ${GITLAB_BASE_URL:-https://gitlab.com}
-  token_file: /run/secrets/gitlab_token_ci   # read_api + write_repository
+approvals:
+  mode: smart
+  deny:
+    - "git push* main*"
+    - "git push* master*"
+    - "git push* release/*"
+    - "docker system prune*"
+    - "*DROP TABLE*"
+    - "*DROP DATABASE*"
+    - "rm -rf /*"
+    - "rm -rf /"
 
-workspace:
-  root: /workspace
-  mode: rw
-  allowed_paths: [".gitlab-ci.yml", "Dockerfile*", "docker-compose*.yml", "deploy/**", "infra/**", ".github/**"]
-  worktrees: /workspace/.worktrees
+worktree: true
+worktree_sync: true
 
-queue:
-  redis_url: redis://redis:6379/0
-  inbox_stream: stream:devops
-  results_stream: stream:results
-  consumer_group: devops
+skills:
+  auto_load:
+    - incident-triage
 
-policy:
+database:
+  journal_mode: delete
+
+emaw:
   agent_md: /opt/data/AGENT.md
   platform_policy: /config/policies/platform-policy.yaml
   projects: /config/projects.yaml
-
-budgets:
+  allowed_paths: [".gitlab-ci.yml", "Dockerfile*", "docker-compose*.yml", "deploy/**", "infra/**", ".github/**"]
+  inbox_stream: stream:devops
+  results_stream: stream:results
   token_budget_per_task: 300000
   self_heal_limit: 2
-
-skills_dir: /opt/data/skills
-memory_dir: /opt/data/memory
-log_level: ${HERMES_LOG_LEVEL:-info}

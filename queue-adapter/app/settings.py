@@ -44,16 +44,25 @@ class Settings(BaseSettings):
 
     # --- dispatch --------------------------------------------------------------
     # dryrun      → write the prompt to OUTBOX_DIR and log it (no Hermes needed)
-    # http        → POST {task, prompt} to HERMES_HTTP_URL (e.g. Hermes gateway webhook)
-    # hermes_cli  → run HERMES_CLI_TEMPLATE with {prompt_file} / {prompt} / {agent} / {task_id}
-    dispatcher: Literal["dryrun", "http", "hermes_cli"] = Field(
+    # hermes_api  → POST /v1/runs on Hermes API server :8642 (preferred, DECISION-1)
+    # http        → POST {task, prompt} to HERMES_HTTP_URL (legacy shim)
+    # hermes_cli  → hermes -p {agent} chat --oneshot -Q --query-file {prompt_file} -s {skill}
+    dispatcher: Literal["dryrun", "http", "hermes_cli", "hermes_api"] = Field(
         default="dryrun", alias="DISPATCHER"
     )
     outbox_dir: str = Field(default="/var/lib/queue-adapter/outbox", alias="OUTBOX_DIR")
     hermes_http_url: str | None = Field(default=None, alias="HERMES_HTTP_URL")
     hermes_http_token_file: str | None = Field(default=None, alias="HERMES_HTTP_TOKEN_FILE")
+    hermes_api_url: str | None = Field(default=None, alias="HERMES_API_URL")
+    hermes_api_key_file: str | None = Field(default=None, alias="HERMES_API_KEY_FILE")
+    hermes_api_poll_interval_seconds: float = Field(
+        default=2.0, alias="HERMES_API_POLL_INTERVAL_SECONDS"
+    )
     hermes_cli_template: str = Field(
-        default="hermes run --file {prompt_file}", alias="HERMES_CLI_TEMPLATE"
+        default=(
+            "hermes -p {agent} chat --oneshot -Q --query-file {prompt_file} -s {skill}"
+        ),
+        alias="HERMES_CLI_TEMPLATE",
     )
     dispatch_timeout_seconds: int = Field(default=1_800, alias="DISPATCH_TIMEOUT_SECONDS")
     # Phase 1–2: one Hermes instance handles every role. Phase 3: one adapter per role.
@@ -82,6 +91,8 @@ class Settings(BaseSettings):
             self.database_url = self.database_url.replace("${PG_PASSWORD}", pw)
         if self.dispatcher == "http" and not self.hermes_http_url:
             raise ValueError("DISPATCHER=http requires HERMES_HTTP_URL")
+        if self.dispatcher == "hermes_api" and not self.hermes_api_url:
+            raise ValueError("DISPATCHER=hermes_api requires HERMES_API_URL")
         return self
 
     @property
@@ -91,3 +102,7 @@ class Settings(BaseSettings):
     @property
     def hermes_http_token(self) -> str | None:
         return _read_secret_file(self.hermes_http_token_file)
+
+    @property
+    def hermes_api_token(self) -> str | None:
+        return _read_secret_file(self.hermes_api_key_file)

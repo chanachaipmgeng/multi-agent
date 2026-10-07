@@ -11,7 +11,7 @@ Legend: ✅ in repo & verified · 🧪 in repo, needs real environment to exerci
 | ID | Deliverable | Where | Status |
 |---|---|---|---|
 | D0.1 | WSL2 Ubuntu 24.04 + Docker Desktop + Node 20 + Python 3 + Git | `scripts/check-prereqs.sh` (`make prereqs`) verifies the host | 🧪 run on the WSL2 machine |
-| D0.2 | Hermes installed, `hermes setup` (provider + fallback), `terminal.backend=docker` | `scripts/hermes-configure.sh`; `terminal.backend: docker` in every `hermes-data/*/config.yaml`; per-profile `model.fallback` | 🧪 needs Hermes + LLM key |
+| D0.2 | Hermes installed, `hermes setup` (provider + fallback), sandbox backend | `scripts/hermes-configure.sh` (real v0.21.5 env keys); compose profiles use `terminal.backend: local` (DECISION-14); host path uses `docker`; `fallback_providers` in every `config.yaml`; evidence in `docs/hermes-capability-check.md` | 🧪 needs LLM key + Telegram for live drill — see `docs/phase0-runbook.md` |
 | D0.3 | Telegram bot + `telegram.allowed_users` | `.env.example` (`SECRET_TELEGRAM_TOKEN`, `TELEGRAM_ALLOWED_USERS`), `hermes-configure.sh`, `config/rbac.example.yaml` | 🧪 needs bot token + user id |
 | D0.4 | Pilot repo with `.agentignore`, `project-standards.md`, correct test exit codes | `workspace/_templates/*`, `scripts/onboard-project.sh`, `examples/sandbox-smoke/` (exit 0/1 verified) | ✅ template & smoke · ☐ onboard the real pilot repo (DECISION-11) |
 | D0.5 | Skills `dev-flow`, `review-code`, `human-approval-gate` in git | `skills/_dev-common/dev-flow.md`, `skills/_dev-common/review-code.md`, `skills/coordinator/human-approval-gate.md`; `make skills-sync` | ✅ |

@@ -1,10 +1,16 @@
 ---
 name: resolve-issue
-owner: [dev-frontend, dev-backend]
-phase: 1
-hitl: push + MR via human-approval-gate (coordinator)
-inputs: [task_id, trace_id, project, issue_iid, issue_title, issue_body, labels, branch, workspace_path, test_command, self_heal_limit]
-triggers: GitLab Issue Hook with label `agent-ready` (opt-in, DECISION-13)
+description: End-to-end GitLab Issue fix (agent-ready) — branch, test, review, approval gate, MR Closes #iid.
+version: 1.0.0
+metadata:
+  hermes:
+    tags: [emaw, gitlab, issue]
+    category: emaw
+    owner: [dev-frontend, dev-backend]
+    phase: 1
+    hitl: push + MR via human-approval-gate (coordinator)
+    inputs: [task_id, trace_id, project, issue_iid, issue_title, issue_body, labels, branch, workspace_path, test_command, self_heal_limit]
+    triggers: GitLab Issue Hook with label agent-ready (DECISION-13)
 ---
 
 # Skill: resolve-issue
