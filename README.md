@@ -6,7 +6,8 @@ Incident Response: มนุษย์สั่งงานผ่าน Telegram,
 Webhook Gateway, Coordinator มอบหมายงานให้ worker agents ที่ทำงานใน Docker sandbox และทุก action ที่มี
 ผลกระทบสูงต้องผ่าน Human-in-the-Loop
 
-สถานะ: **Phase 0 — Foundation** (ดู [`docs/phase0-exit-criteria.md`](docs/phase0-exit-criteria.md))
+สถานะ: **Phase 0 — Foundation ✅ · Phase 1 — Permanent Ingress & GitLab Integration (in progress)**
+ดู [`docs/phase0-exit-criteria.md`](docs/phase0-exit-criteria.md) และ [`docs/phase1-exit-criteria.md`](docs/phase1-exit-criteria.md)
 เอกสารออกแบบฉบับเต็ม: *Enterprise Multi-Agent Workspace — System Design Document v1.1*
 
 ## Architecture (ย่อ)
@@ -14,9 +15,14 @@ Webhook Gateway, Coordinator มอบหมายงานให้ worker agen
 ```text
 Telegram ──▶ coordinator ──▶ Redis Streams ──▶ dev-frontend / dev-backend / reviewer / devops / qa
                  ▲                │                          │ (Docker sandbox, git worktree per task)
-GitLab ─▶ Cloudflare Tunnel ─▶ Webhook Gateway (FastAPI) ─▶ PostgreSQL Task Store + audit (append-only)
-          POST /webhook/gitlab    verify · dedupe · normalize → Task envelope
+GitLab ─▶ Cloudflare Tunnel ─▶ Webhook Gateway (FastAPI) ─▶ stream:tasks ─▶ queue-adapter ─▶ Hermes
+          POST /webhook/gitlab    verify · dedupe · normalize      │   enrich (job trace, redacted) · prompt · dispatch
+                                                                   ▼
+                                               PostgreSQL Task Store + audit (append-only)
 ```
+
+Phase 1–2: `queue-adapter` ตัวเดียวส่งงานให้ Hermes ตัวเดียว (`CONSUMER_GROUP=hermes-single`);
+Phase 3: adapter เป็น sidecar ต่อ role อ่าน `stream:<role>` และ coordinator เป็นผู้ route
 
 หลักการ: Human-in-command · Sandbox by default · Least privilege · One role, one profile ·
 Everything is auditable · Grow in phases
@@ -27,6 +33,7 @@ Everything is auditable · Grow in phases
 |---|---|
 | `docker-compose.yml` | dev stack: `redis`, `postgres`, `webhook-gateway`; profiles `agents` (6 Hermes containers), `ingress` (cloudflared), `onprem-llm` (Ollama) |
 | `webhook-gateway/` | FastAPI gateway — `X-Gitlab-Token` constant-time check, idempotency (`X-Gitlab-Event-UUID`), Task envelope, Redis Streams publisher, Postgres task store, `/metrics`; tests |
+| `queue-adapter/` | Redis Streams consumer → Hermes dispatcher (`dryrun` / `http` / `hermes_cli`), GitLab job-trace enrichment with secret redaction, retry via `XAUTOCLAIM`, dead-letter, task state + audit, Telegram notice; tests |
 | `db/migrations/` | Task Store schema: `tasks`, `handoffs`, `approvals`, `audit_events` (append-only), least-privilege roles |
 | `config/projects.yaml` | project allowlist + routing (opt-in label `agent-ready`, `auto_push_branches: []`) |
 | `config/policies/platform-policy.yaml` | platform policy layer 1: never push `main`, HITL matrix, limits, prompt-injection rule |
@@ -36,8 +43,8 @@ Everything is auditable · Grow in phases
 | `workspace/` | project clones (gitignored) + `_templates/` (`project-standards.md`, `.agentignore`, `.socraticodeignore`) + `.worktrees/` |
 | `examples/sandbox-smoke/` | minimal pilot project whose `./test.sh` returns exit 0/1 correctly |
 | `cloudflared/` | Named Tunnel config template + runbook (Phase 1, blocked on domain) |
-| `scripts/`, `Makefile` | prereq check, SOPS secrets, migrate, Hermes configure, onboard repo, skill sync, test webhook, Phase 0 verifier |
-| `docs/` | `local-dev.md`, `secrets.md`, `phase0-exit-criteria.md` |
+| `scripts/`, `Makefile` | prereq check, SOPS secrets, migrate, Hermes configure, onboard repo, skill sync, test webhook, Phase 0 verifier, **tunnel setup/status, GitLab webhook register, token scope check** |
+| `docs/` | `local-dev.md`, `secrets.md`, `gitlab-setup.md`, `phase0-exit-criteria.md`, `phase1-exit-criteria.md`, `runbooks/{tunnel,token-rotation}.md` |
 | `.env.example`, `.sops.yaml`, `.gitleaks.toml`, `.agentignore`, `.pre-commit-config.yaml` | secrets & hygiene |
 
 ## Quick start (รันในเครื่อง / Run locally)
@@ -51,19 +58,25 @@ git clone https://github.com/chanachaipmgeng/multi-agent.git && cd multi-agent
 cp .env.example .env && make secrets-dev
 
 # 2) platform stack
-make up                                  # redis + postgres (+ schema) + webhook-gateway on 127.0.0.1:8700
+make up                                  # redis + postgres (+ schema) + webhook-gateway :8700 + queue-adapter (dryrun)
 curl -s localhost:8700/readyz            # {"status":"ok","checks":{"redis":true,"task_store":true}}
 
-# 3) fire a sample GitLab webhook
+# 3) fire a sample GitLab webhook and watch it flow
 make webhook-test                        # Issue Hook (agent-ready, area:frontend) → {"status":"queued","assigned_to":"dev-frontend",...}
 make webhook-test KIND=pipeline          # failed pipeline → devops
 scripts/send-test-webhook.sh issue --bad-token    # → HTTP 401
+make outbox                              # prompts the adapter built for Hermes (DISPATCHER=dryrun)
+docker compose exec postgres psql -U emaw -c 'select task_id,type,state,assigned_to from tasks'
 
 # 4) tests
-make test                                # 37 gateway unit tests (fakeredis + in-memory store)
+make test                                # 37 gateway + 22 adapter unit tests
 make test-integration                    # +3 against Postgres (TEST_DATABASE_URL=...)
 make verify-phase0                       # Phase 0 exit-criteria self-check
 ```
+
+Phase 1 (ต้องมีโดเมน Cloudflare + GitLab จริง): `make tunnel-setup HOST=webhook.<org>.com SERVICE=1` →
+`make gitlab-webhook PROJECT=<group>/<repo> URL=https://webhook.<org>.com` → `make gitlab-token-check` →
+`make tunnel-status URL=https://webhook.<org>.com` — ดู [`docs/gitlab-setup.md`](docs/gitlab-setup.md)
 
 Hermes single agent (Phase 0, บน WSL2): ดู [`docs/local-dev.md`](docs/local-dev.md) §4 —
 `hermes setup` → `TELEGRAM_ALLOWED_USERS=<id> make hermes-configure` → `make skills-sync` → `hermes gateway run`
@@ -88,7 +101,7 @@ Task envelope (design §4.3): `task_id`, `trace_id`, `type`, `project`, `source`
 | GitLab webhooks via Cloudflare Named Tunnel | `cloudflared/`, compose `ingress` profile, single path `/webhook/gitlab` |
 | SocratiCode via CLI + MCP | `hermes-data/reviewer/config.yaml#mcp_servers` (enabled Phase 2) |
 | No auto-push for 2 months; approver ≠ developer; never push `main` | `projects.yaml#auto_push_branches: []`, `platform-policy.yaml`, `rbac.example.yaml`, every `AGENT.md` |
-| Gateway built in-house: FastAPI + Redis Streams + PostgreSQL | `webhook-gateway/`, `db/` |
+| Gateway built in-house: FastAPI + Redis Streams + PostgreSQL | `webhook-gateway/`, `queue-adapter/`, `db/` |
 | Opt-in via label `agent-ready` | gateway `normalize()` → `recorded` without label |
 
 ## Security notes

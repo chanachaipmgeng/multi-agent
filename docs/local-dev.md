@@ -23,14 +23,19 @@ Quick dev box without SOPS: `cp .env.example .env && make secrets-dev`.
 ## 3. Platform stack
 
 ```bash
-make up                             # redis + postgres (+ migrations on first boot) + webhook-gateway
+make up                             # redis + postgres (+ migrations on first boot) + webhook-gateway + queue-adapter
 curl -s localhost:8700/readyz       # {"status":"ok","checks":{"redis":true,"task_store":true}}
 make webhook-test                   # sample Issue Hook → {"status":"queued", ...}
 make webhook-test KIND=pipeline     # → pipeline_failed routed to devops
 scripts/send-test-webhook.sh issue --bad-token   # → HTTP 401
+make outbox                         # adapter (DISPATCHER=dryrun) wrote one prompt per task
 docker compose exec redis redis-cli XLEN stream:tasks
+docker compose exec redis redis-cli XLEN stream:results
 docker compose exec postgres psql -U emaw -c 'select task_id,type,state,assigned_to from tasks'
 ```
+
+Switch the adapter to a real Hermes with `ADAPTER_DISPATCHER=hermes_cli` (host install, mount the
+`hermes` binary) or `ADAPTER_DISPATCHER=http` + `HERMES_HTTP_URL=…` in `.env`, then `make up`.
 
 Ports (all bound to 127.0.0.1): gateway 8700, redis 6379, postgres 5432, Hermes dashboard 9119.
 Override with `GATEWAY_PORT`, `REDIS_PORT`, `POSTGRES_PORT` in `.env`.
