@@ -72,7 +72,10 @@ docker compose exec postgres psql -U emaw -c 'select task_id,type,state,assigned
 # 4) Hermes — cloud OR local-free (all 6 agents on Ollama)
 make hermes-seed && make skills-sync
 # make up-agents
-# Local-free: make up-local-free && make local-llm-pull && make local-free-check && make phase3-check
+# Local-free (stop any Phase 2 single-adapter stack first):
+#   make down && make up-local-free && make local-llm-pull
+#   make local-free-check && make phase3-check && make webhook-test
+# Needs ≥64K Ollama context (DECISION-15); see docs/phase3-exit-criteria.md live-drill log.
 
 # 5) tests
 make test                                # gateway + adapter unit tests (incl. hermes_api dispatcher)
@@ -104,6 +107,8 @@ Task envelope (design §4.3): `task_id`, `trace_id`, `type`, `project`, `source`
 |---|---|
 | Linux VM from Phase 3, WSL2 for dev now | `docs/local-dev.md`, compose is host-agnostic |
 | Hybrid LLM (cloud + Ollama for sensitive repos) | `projects.yaml#data_classification/llm_backend`, `inference-ollama` profile, per-profile `local_endpoint` |
+| Local-free all 6 agents (DECISION-15) | `docker-compose.local-free.yml`, `OLLAMA_CONTEXT_LENGTH=65536`, `model.ollama_num_ctx: 65536` |
+| Phase 3 router fan-out (DECISION-16) | `queue-adapter` `MODE=router|worker`, HANDOFF YAML, MinIO SigV4 artifacts |
 | GitLab webhooks via Cloudflare Named Tunnel | `cloudflared/`, compose `ingress` profile, single path `/webhook/gitlab` |
 | SocratiCode MCP (local AGPL) | `hermes-data/reviewer/config.yaml#mcp_servers` + `make up-socraticode` / `make up-local-free` |
 | No auto-push for 2 months; approver ≠ developer; never push `main` | `projects.yaml#auto_push_branches: []`, `platform-policy.yaml`, `rbac.example.yaml`, every `AGENT.md` |

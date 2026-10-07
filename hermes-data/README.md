@@ -27,3 +27,5 @@ Phase 0–2 could run a single agent; **Phase 3** runs all six profiles as separ
 services, each with an `adapter-<role>` sidecar reading `stream:<role>`.
 
 Local-free: mount `config.local-free.yaml` (all six agents → shared `inference-ollama`).
+Each local-free config sets `model.ollama_num_ctx: 65536` (Hermes ≥0.21 minimum);
+compose also sets `OLLAMA_CONTEXT_LENGTH=65536` on `inference-ollama` (DECISION-15).

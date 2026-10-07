@@ -10,4 +10,6 @@ Canonical design text: [`system-design-v1.1.md`](system-design-v1.1.md) (copied 
 | Routing ownership | Coordinator LLM routes everything | DECISION-16: Python `MODE=router` for rules 1/2/4; coordinator skill for rules 3/5 |
 | Flow A reviewer apply | Reviewer may `--fix` then hand back | Reviewer never applies; handoff patch to owning dev agent |
 | Phase 3 local-free | (not specified) | All 6 agents on shared `inference-ollama` (DECISION-15 updated) |
-| MinIO root password | Docker secret file | MinIO has no `*_FILE` support — root password via env; agent key via Docker secret |
+| Local Ollama context | (not specified) | Hermes ≥0.21 needs ≥64K — `OLLAMA_CONTEXT_LENGTH` + `model.ollama_num_ctx: 65536` |
+| MinIO root password | Docker secret file | MinIO has no `*_FILE` support — root password via env; adapters SigV4 with root key locally |
+| Redis `BLOCK 0` | (implied non-blocking) | Redis treats `BLOCK 0` as wait forever — router omits `block` for non-blocking reads |

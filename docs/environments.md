@@ -4,14 +4,15 @@
 |---|---|---|---|
 | Host | Windows / Docker Desktop | Linux VM or same host with cloud LLM | Linux VM Ubuntu 24.04 (DECISION-2) |
 | Compose | `docker-compose.yml` + `docker-compose.local-free.yml` | base compose + cloud LLM keys | base + `docker-compose.prod.yml` + profile `ingress` |
-| LLM | `inference-ollama` / `qwen2.5-coder:7b` | OpenRouter (or hybrid per `projects.yaml`) | OpenRouter + optional `onprem-llm` |
+| LLM | `inference-ollama` / `qwen2.5-coder:7b` @ **64K ctx** | OpenRouter (or hybrid per `projects.yaml`) | OpenRouter + optional `onprem-llm` |
 | Agents | all 6 | all 6 | all 6 |
-| Adapters | router + 5 workers | same | same |
+| Adapters | router + 5 workers (`ADAPTER_DISPATCHER=hermes_api`) | same | same |
 | Ingress | loopback only | Cloudflare tunnel (staging hostname) | Cloudflare tunnel (DECISION-5) |
 | Secrets | `make secrets-dev` | SOPS `.env.enc` | SOPS / future Vault |
 | Pilot repos | `sandbox-smoke` + placeholders | DECISION-11 pilot | DECISION-11 |
 | RBAC | `config/rbac.yaml` (from example) | real Telegram ids (DECISION-8) | same |
-| MinIO | local compose | local or external | compose MinIO + offsite restic (Phase 4) |
+| MinIO | local compose + SigV4 via root password | local or external | compose MinIO + offsite restic (Phase 4) |
+| Verified | API Flow A + E11 pause/RBAC (see `phase3-exit-criteria.md`) | — | — |
 
 ## Promote checklist
 
