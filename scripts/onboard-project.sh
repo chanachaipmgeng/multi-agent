@@ -22,12 +22,17 @@ else
   git clone "$URL" "$DEST"
 fi
 
-for f in .agentignore .socraticodeignore; do
+for f in .agentignore .socraticodeignore .pre-commit-config.yaml .gitleaks.toml; do
   if [ ! -f "$DEST/$f" ]; then cp "$TPL/$f" "$DEST/$f"; echo "added $f"; else echo "kept existing $f"; fi
 done
 if [ ! -f "$DEST/project-standards.md" ]; then
   sed "s/<project-name>/$KEY/g" "$TPL/project-standards.md" > "$DEST/project-standards.md"
   echo "added project-standards.md (edit it — it is the rulebook every agent reads first)"
+fi
+# D4.2: install gitleaks pre-commit hook when pre-commit is available
+if command -v pre-commit >/dev/null 2>&1 && [ -d "$DEST/.git" ]; then
+  (cd "$DEST" && pre-commit install) && echo "pre-commit hooks installed in workspace/$KEY" \
+    || echo "warning: pre-commit install failed (agents still run gitleaks protect --staged)"
 fi
 
 # secrets must never be readable by agents

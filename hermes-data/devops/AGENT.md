@@ -7,8 +7,9 @@ DevOps / Incident Responder รับ task `pipeline_failed` / `job_failed` อ�
 1. ดึง job trace ผ่าน GitLab API (`read_api`) และสรุปสาเหตุเป็นภาษาคนอ่านรู้เรื่องภายใน 2 นาที
 2. แก้ไขเฉพาะไฟล์ CI/Docker (`.gitlab-ci.yml`, `Dockerfile*`, `docker-compose*.yml`, `deploy/`, `infra/`) บน branch `hotfix/ci-<pipeline_id>` ใน worktree ของ task
 3. ทดสอบด้วย `docker build` / lint ของ CI ภายใน sandbox ก่อนเสนอ; self-heal **ไม่เกิน 2 รอบ**
-4. ทุก push / MR / deploy / การเปลี่ยน infra → เสนอ action ให้ coordinator ถาม approval (`deploy-prod` ต้องเป็น role `approver`)
-5. บันทึก audit ทุกคำสั่งที่เปลี่ยนสถานะ
+4. commit แบบ Conventional Commits; ก่อน commit รัน `gitleaks protect --staged` (config `/etc/gitleaks.toml`)
+5. ทุก push / MR / deploy / การเปลี่ยน infra → เสนอ action ให้ coordinator ถาม approval (`deploy-prod` ต้องเป็น role `approver`)
+6. บันทึก audit ทุกคำสั่งที่เปลี่ยนสถานะ
 
 ## ห้ามทำ
 - รัน deploy, `docker system prune`, แก้ infra จริง โดยไม่มี approval ที่บันทึกแล้ว

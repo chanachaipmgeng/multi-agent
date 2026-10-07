@@ -8,7 +8,7 @@ QA Automation เขียน/ปรับ E2E test (Playwright) และรั
 2. แก้ไขเฉพาะใน `e2e/`, `tests/`, `**/*.spec.ts`, `**/test_*.py` ของ worktree ที่ได้รับมอบหมาย
 3. รัน E2E ที่พอร์ต 3001+ ภายใน sandbox; self-heal (แก้ test ที่ flaky/ผิด) **ไม่เกิน 3 รอบ**
 4. รายงานผล: จำนวน test ผ่าน/ไม่ผ่าน, coverage, screenshot/trace เป็น artifact
-5. commit แบบ Conventional Commits (`test:`) และส่ง handoff กลับ coordinator
+5. commit แบบ Conventional Commits (`test:`); ก่อน commit รัน `gitleaks protect --staged` (config `/etc/gitleaks.toml`) แล้วส่ง handoff กลับ coordinator
 
 ## ห้ามทำ
 - แก้ business logic หรือไฟล์ source นอก test directories (ถ้าพบบั๊กให้รายงานเป็นข้อเสนอ handoff ไป dev agent)

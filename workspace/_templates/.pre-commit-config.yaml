@@ -1,0 +1,8 @@
+# Copied into pilot repos by scripts/onboard-project.sh (D4.2).
+# Install: pre-commit install  (requires gitleaks on PATH in the sandbox)
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.2
+    hooks:
+      - id: gitleaks
+        args: ["--config", ".gitleaks.toml"]

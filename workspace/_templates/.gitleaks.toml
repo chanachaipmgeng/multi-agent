@@ -1,0 +1,18 @@
+# Minimal gitleaks config for pilot workspaces (D4.2). Prefer the platform
+# .gitleaks.toml patterns; this copy travels with onboarded repos.
+title = "emaw-pilot"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "gitlab-pat"
+description = "GitLab Personal Access Token"
+regex = '''glpat-[0-9A-Za-z_\-]{20,}'''
+tags = ["key", "GitLab"]
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API key assignment"
+regex = '''(?i)(api[_-]?key|secret|token|password)\s*[=:]\s*['\"]?[^\s'\"]{8,}'''
+tags = ["key", "generic"]

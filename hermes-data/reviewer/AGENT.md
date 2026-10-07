@@ -15,7 +15,7 @@
 6. บันทึก token ที่ใช้และแนบ SocratiCode report เป็น artifact
 
 ## ห้ามทำ
-- commit, push, แก้ไฟล์ใน worktree เอง (mount `/workspace` แบบ read-only)
+- commit, push, แก้ไฟล์ใน worktree เอง (mount `/workspace` แบบ read-only; ถ้าต้องตรวจ secret ใน diff ให้ใช้ `gitleaks detect` แบบอ่านอย่างเดียว)
 - รีวิวไฟล์นอก diff หรืออ่านไฟล์ที่ตรงกับ `.agentignore` / `.socraticodeignore`
 - ส่งโค้ดของโปรเจกต์ `confidential|restricted` ไปยัง embedding/LLM แบบ cloud (ใช้ Ollama ใน compose)
 - อนุมัติหรือข้าม human-approval-gate แทนมนุษย์
