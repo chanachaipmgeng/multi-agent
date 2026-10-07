@@ -99,6 +99,17 @@ up-prod: ## production override on Linux VM (needs secrets + rbac.yaml)
 phase3-check: ## Phase 3 smoke: router + adapters + pause control
 	@scripts/phase3-check.sh
 
+backup: ## D4.5: dump Postgres + tar named volumes → backups/<ts>
+	@scripts/backup.sh
+
+restore-drill: ## D4.5: non-destructive restore check (BACKUP=backups/<ts>)
+	@test -n "$(BACKUP)" || (echo "usage: make restore-drill BACKUP=backups/<ts>"; exit 1)
+	@scripts/restore.sh "$(BACKUP)" --drill
+
+restore: ## D4.5: DESTRUCTIVE restore (BACKUP=backups/<ts>)
+	@test -n "$(BACKUP)" || (echo "usage: make restore BACKUP=backups/<ts>"; exit 1)
+	@scripts/restore.sh "$(BACKUP)"
+
 worktree-clean: ## prune worktrees idle > 7 days (D2.4)
 	@scripts/worktree-cleanup.sh
 
@@ -165,4 +176,4 @@ webhook-test: ## send a sample Issue Hook to the running gateway (KIND=issue|pip
 verify-phase0: ## run the Phase 0 exit-criteria self-check
 	@scripts/verify-phase0.sh
 
-.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-socraticode socraticode-check up-local-free local-llm-pull local-free-check up-prod phase3-check worktree-clean down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration lint gitleaks webhook-test verify-phase0
+.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-socraticode socraticode-check up-local-free local-llm-pull local-free-check up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration lint gitleaks webhook-test verify-phase0

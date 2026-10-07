@@ -45,6 +45,9 @@ __pycache__/
 build/
 dist/
 
+# --- backups (D4.5; may contain secrets from volumes) ------------------------
+backups/
+
 # --- misc --------------------------------------------------------------------
 *.log
 .DS_Store
