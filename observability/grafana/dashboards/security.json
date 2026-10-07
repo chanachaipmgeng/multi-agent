@@ -1,0 +1,47 @@
+{
+  "uid": "emaw-security",
+  "title": "EMAW Security",
+  "tags": ["emaw", "security"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Webhook auth failures",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [{ "expr": "rate(webhook_auth_fail_total[5m])", "legendFormat": "auth_fail" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Approval latency",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(approval_latency_seconds_bucket[15m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(approval_latency_seconds_bucket[15m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tasks failed / dead-lettered",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [{ "expr": "rate(emaw_tasks_failed_total[5m])", "legendFormat": "{{role}}" }]
+    },
+    {
+      "type": "stat",
+      "title": "NEEDS_HUMAN / AWAITING_APPROVAL",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "task_state_total{state=\"NEEDS_HUMAN\"}", "legendFormat": "NEEDS_HUMAN" },
+        { "expr": "task_state_total{state=\"AWAITING_APPROVAL\"}", "legendFormat": "AWAITING_APPROVAL" }
+      ]
+    }
+  ]
+}

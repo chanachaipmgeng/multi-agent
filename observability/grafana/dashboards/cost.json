@@ -1,0 +1,38 @@
+{
+  "uid": "emaw-cost",
+  "title": "EMAW Cost",
+  "tags": ["emaw", "cost"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Tokens total (adapters)",
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "targets": [{ "expr": "sum(emaw_tokens_total)", "legendFormat": "tokens" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM tokens by agent",
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 0 },
+      "targets": [{ "expr": "llm_tokens_total", "legendFormat": "{{agent}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Token burn rate (5m)",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "targets": [{ "expr": "sum by (agent) (rate(llm_tokens_total[5m]))", "legendFormat": "{{agent}}" }]
+    },
+    {
+      "type": "text",
+      "title": "Note",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 16 },
+      "options": {
+        "mode": "markdown",
+        "content": "`llm_cost_usd_total` is not instrumented yet — use token panels as the cost proxy (DECISION-7)."
+      }
+    }
+  ]
+}

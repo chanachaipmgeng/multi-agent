@@ -79,7 +79,7 @@ jobs:
             echo ci-placeholder > "secrets/$f"
           done
           cp config/rbac.example.yaml config/rbac.yaml
-          docker compose --profile agents --profile ingress --profile onprem-llm --profile socraticode config -q
+          docker compose --profile agents --profile ingress --profile onprem-llm --profile socraticode --profile observability config -q
           docker compose -f docker-compose.yml -f docker-compose.local-free.yml \
             --profile agents --profile socraticode --profile onprem-llm config -q
           docker compose -f docker-compose.yml -f docker-compose.prod.yml \

@@ -1,0 +1,35 @@
+{
+  "uid": "emaw-operations",
+  "title": "EMAW Operations",
+  "tags": ["emaw", "operations"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Queue depth",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [{ "expr": "queue_depth", "legendFormat": "{{stream}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Queue oldest age (s)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [{ "expr": "queue_oldest_age_seconds", "legendFormat": "{{stream}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Task state totals",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [{ "expr": "task_state_total", "legendFormat": "{{state}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Webhook received rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [{ "expr": "sum by (status) (rate(webhook_received_total[5m]))", "legendFormat": "{{status}}" }]
+    }
+  ]
+}

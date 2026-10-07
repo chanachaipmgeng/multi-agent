@@ -1,0 +1,38 @@
+{
+  "uid": "emaw-agents",
+  "title": "EMAW Agents",
+  "tags": ["emaw", "agents"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Heartbeat age (s)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [{ "expr": "time() - agent_heartbeat_timestamp", "legendFormat": "{{agent}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "Tasks dispatched rate",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [{ "expr": "rate(emaw_tasks_dispatched_total[5m])", "legendFormat": "{{role}}" }]
+    },
+    {
+      "type": "heatmap",
+      "title": "Task duration",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [{ "expr": "rate(task_duration_seconds_bucket[5m])", "legendFormat": "{{le}}" }]
+    },
+    {
+      "type": "timeseries",
+      "title": "LLM tokens (adapter)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "llm_tokens_total", "legendFormat": "{{agent}}" },
+        { "expr": "emaw_tokens_total", "legendFormat": "emaw {{role}}" }
+      ]
+    }
+  ]
+}

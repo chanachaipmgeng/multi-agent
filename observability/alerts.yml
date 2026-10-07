@@ -1,0 +1,59 @@
+# Alert rules from design §8.2 (D4.1)
+groups:
+  - name: emaw-platform
+    rules:
+      - alert: WebhookAuthFailRate
+        expr: rate(webhook_auth_fail_total[1m]) > 5/60
+        for: 1m
+        labels: { severity: warning }
+        annotations:
+          summary: "Webhook auth failures > 5/min"
+
+      - alert: QueueDepthHigh
+        expr: queue_depth > 10
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Queue depth {{ $labels.stream }} = {{ $value }}"
+
+      - alert: QueueOldestAgeHigh
+        expr: queue_oldest_age_seconds > 900
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Oldest entry on {{ $labels.stream }} age {{ $value }}s"
+
+      - alert: AgentHeartbeatStale
+        expr: (time() - agent_heartbeat_timestamp) > 300
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Agent {{ $labels.agent }} heartbeat stale > 5m"
+
+      - alert: TunnelDown
+        expr: absent(cloudflared_tunnel_ha_connections) or cloudflared_tunnel_ha_connections < 1
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Cloudflare tunnel down or no HA connections"
+
+      - alert: NeedsHumanBacklog
+        expr: task_state_total{state="NEEDS_HUMAN"} > 3
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "NEEDS_HUMAN tasks > 3 for over 1h"
+
+      - alert: ApprovalLatencyHigh
+        expr: histogram_quantile(0.50, sum(rate(approval_latency_seconds_bucket[30m])) by (le)) > 1200
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Approval p50 latency > 20 minutes"
+
+      - alert: TaskDurationP95High
+        expr: histogram_quantile(0.95, sum(rate(task_duration_seconds_bucket[30m])) by (le, agent)) > 2700
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Task duration p95 > 45m for {{ $labels.agent }}"

@@ -1,0 +1,60 @@
+# OpenTelemetry Collector (D4.1 / D4.2) — OTLP in, redaction, export Tempo + debug
+# Container docker logs are collected by Promtail (see promtail-config.yaml) with the
+# same redaction patterns; this collector is the trace path + future app OTLP.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch: {}
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+  # D4.2: redact secrets in span/log attribute string values (mirrors queue-adapter redaction.py)
+  attributes/redact:
+    actions:
+      - key: db.statement
+        action: delete
+  transform/redact:
+    error_mode: ignore
+    trace_statements:
+      - context: span
+        statements:
+          - replace_pattern(name, "glpat-[0-9A-Za-z_\\-]{20,}", "glpat-[REDACTED]")
+          - replace_pattern(name, "\\bsk-[A-Za-z0-9_\\-]{16,}", "sk-[REDACTED]")
+          - replace_pattern(name, "(?i)\\bBearer\\s+[A-Za-z0-9._\\-]{8,}", "Bearer [REDACTED]")
+    log_statements:
+      - context: log
+        statements:
+          - replace_pattern(body, "glpat-[0-9A-Za-z_\\-]{20,}", "glpat-[REDACTED]") where IsString(body)
+          - replace_pattern(body, "\\bsk-[A-Za-z0-9_\\-]{16,}", "sk-[REDACTED]") where IsString(body)
+          - replace_pattern(body, "(?i)\\bBearer\\s+[A-Za-z0-9._\\-]{8,}", "Bearer [REDACTED]") where IsString(body)
+          - replace_pattern(body, "AGE-SECRET-KEY-1[0-9A-Z]{58}", "AGE-SECRET-KEY-1[REDACTED]") where IsString(body)
+          - replace_pattern(body, "(?i)\\b([A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|API_KEY)[A-Z0-9_]*)\\s*[=:]\\s*['\\\"]?([^\\s'\\\"]{6,})", "$$1=[REDACTED]") where IsString(body)
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+  debug:
+    verbosity: basic
+
+service:
+  telemetry:
+    metrics:
+      address: 0.0.0.0:8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/redact, transform/redact, batch]
+      exporters: [otlp/tempo, debug]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/redact, batch]
+      exporters: [debug]
