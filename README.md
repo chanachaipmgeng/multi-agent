@@ -6,9 +6,9 @@ Incident Response: มนุษย์สั่งงานผ่าน Telegram,
 Webhook Gateway, Coordinator มอบหมายงานให้ worker agents ที่ทำงานใน Docker sandbox และทุก action ที่มี
 ผลกระทบสูงต้องผ่าน Human-in-the-Loop
 
-สถานะ: **Phase 3 — Multi-Agent (code ✅ · live drills ⏳ on DECISION-5/8/11)** · Phases 0–2 tooling ✅
+สถานะ: **Phase 3 closed** (dashboard auth + §8.2 metrics) · **Phase 4 started** (D4.5 backup/restore · D4.6 digest pins + Trivy) · org-blocked: DECISION-2/5/8/11
 Hermes Agent **v0.21.5** · decisions: [`docs/decisions.md`](docs/decisions.md) · design: [`docs/design/system-design-v1.1.md`](docs/design/system-design-v1.1.md) ([errata](docs/design/errata.md))
-Exit criteria: [`phase0`](docs/phase0-exit-criteria.md) · [`phase1`](docs/phase1-exit-criteria.md) · [`phase2`](docs/phase2-exit-criteria.md) · [`phase3`](docs/phase3-exit-criteria.md)
+Exit criteria: [`phase0`](docs/phase0-exit-criteria.md) · [`phase1`](docs/phase1-exit-criteria.md) · [`phase2`](docs/phase2-exit-criteria.md) · [`phase3`](docs/phase3-exit-criteria.md) · [`phase4`](docs/phase4-exit-criteria.md)
 
 ## Architecture (ย่อ)
 
@@ -47,7 +47,7 @@ Everything is auditable · Grow in phases
 | `examples/sandbox-smoke/` | minimal pilot project whose `./test.sh` returns exit 0/1 correctly |
 | `cloudflared/` | Named Tunnel config template + runbook (Phase 1, blocked on domain) |
 | `scripts/`, `Makefile` | prereq check, SOPS secrets, migrate, Hermes configure, onboard repo, skill sync, test webhook, Phase 0 verifier, **tunnel setup/status, GitLab webhook register, token scope check** |
-| `docs/` | `local-dev.md`, `secrets.md`, `gitlab-setup.md`, `phase0-exit-criteria.md`, `phase1-exit-criteria.md`, `phase2-exit-criteria.md`, `skill-acceptance.md`, `runbooks/{tunnel,token-rotation}.md` |
+| `docs/` | exit criteria, `secrets.md`, `environments.md`, `skill-acceptance.md`, `runbooks/{tunnel,token-rotation,restore,agent-stuck,rollback-mr}.md` |
 | `.env.example`, `.sops.yaml`, `.gitleaks.toml`, `.agentignore`, `.pre-commit-config.yaml` | secrets & hygiene |
 
 ## Quick start (รันในเครื่อง / Run locally)
@@ -109,6 +109,10 @@ Task envelope (design §4.3): `task_id`, `trace_id`, `type`, `project`, `source`
 | Hybrid LLM (cloud + Ollama for sensitive repos) | `projects.yaml#data_classification/llm_backend`, `inference-ollama` profile, per-profile `local_endpoint` |
 | Local-free all 6 agents (DECISION-15) | `docker-compose.local-free.yml`, `OLLAMA_CONTEXT_LENGTH=65536`, `model.ollama_num_ctx: 65536` |
 | Phase 3 router fan-out (DECISION-16) | `queue-adapter` `MODE=router|worker`, HANDOFF YAML, MinIO SigV4 artifacts |
+| Dashboard basic auth (DECISION-18) | `secrets/dashboard_password` → `HERMES_DASHBOARD_BASIC_AUTH_*` · `:9119` |
+| Metrics §8.2 | adapter gauges/histograms · gateway `approval_latency_seconds` |
+| Backup / restore (D4.5) | `make backup` · `make restore-drill BACKUP=…` · `docs/runbooks/restore.md` |
+| Supply chain (D4.6) | digest-pinned images · `scripts/pin-digests.sh` · CI Trivy |
 | GitLab webhooks via Cloudflare Named Tunnel | `cloudflared/`, compose `ingress` profile, single path `/webhook/gitlab` |
 | SocratiCode MCP (local AGPL) | `hermes-data/reviewer/config.yaml#mcp_servers` + `make up-socraticode` / `make up-local-free` |
 | No auto-push for 2 months; approver ≠ developer; never push `main` | `projects.yaml#auto_push_branches: []`, `platform-policy.yaml`, `rbac.example.yaml`, every `AGENT.md` |

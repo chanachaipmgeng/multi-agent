@@ -13,3 +13,6 @@ Canonical design text: [`system-design-v1.1.md`](system-design-v1.1.md) (copied 
 | Local Ollama context | (not specified) | Hermes ≥0.21 needs ≥64K — `OLLAMA_CONTEXT_LENGTH` + `model.ollama_num_ctx: 65536` |
 | MinIO root password | Docker secret file | MinIO has no `*_FILE` support — root password via env; adapters SigV4 with root key locally |
 | Redis `BLOCK 0` | (implied non-blocking) | Redis treats `BLOCK 0` as wait forever — router omits `block` for non-blocking reads |
+| Claim idle (§10.3) | `CLAIM_MIN_IDLE` = 10 minutes for all | Workers keep **10 min**; **router** uses `CLAIM_MIN_IDLE_MS=30000` so pause-deferred PEL resumes quickly |
+| Dashboard `:9119` | Bind + Cloudflare Access (Phase 4) | Hermes 0.21 refuses `0.0.0.0` without auth — **DECISION-18** basic auth via `HERMES_DASHBOARD_BASIC_AUTH_*` from `secrets/dashboard_password` |
+| Image pins (E12) | Digest-pin base + service images | Dockerfiles + compose `${*_IMAGE:-…@sha256:…}`; `scripts/pin-digests.sh`; CI Trivy job |

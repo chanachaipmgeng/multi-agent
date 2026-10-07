@@ -44,4 +44,4 @@ curl -fsS http://127.0.0.1:8700/healthz
 
 - Host ports remain on `127.0.0.1` in the base compose; do not publish them to the LAN.
 - Rotate tokens with `docs/runbooks/token-rotation.md`.
-- Backup/restore is Phase 4 (`pg_dump` + restic of `hermes-data` / MinIO).
+- Backup/restore: `make backup` / `make restore-drill BACKUP=backups/<ts>` (D4.5); optional `RESTIC_REPOSITORY`.

@@ -72,3 +72,23 @@ Obsolete assumption: early drafts treated DECISION-6 as “blocked until SECRET_
 | Telegram UX | Text `y <nonce>` / `n <nonce>` (and Hermes native terminal approvals) |
 | Why | Hermes owns the Telegram update loop; gateway cannot reliably own callback queries |
 | Persistence | `POST /internal/approvals` + `/internal/approvals/{nonce}/decide` + `approvals` table |
+
+## DECISION-18 — Hermes dashboard basic auth (Phase 3 close)
+
+| Item | Decision |
+|---|---|
+| Auth | Hermes 0.21.5 `dashboard.basic_auth` / `HERMES_DASHBOARD_BASIC_AUTH_*` |
+| Username | `emaw` (override `DASHBOARD_USERNAME`) |
+| Password | `secrets/dashboard_password` → seeded into `hermes-data/coordinator/.env` |
+| Session secret | `secrets/dashboard_session_secret` or fall back to `hermes_api_key` |
+| Cloudflare Access | Still planned for Phase 4 (DECISION-5); basic auth is the local/LAN gate |
+
+## DECISION-19 — Backup policy (D4.5)
+
+| Item | Decision |
+|---|---|
+| RPO / RTO | ≤ 24 h / ≤ 1 h (local host) |
+| Scope | `pg_dump -Fc` + Hermes volumes ×6 + MinIO + Redis + adapter outbox (+ pg-data); ollama optional (`BACKUP_OLLAMA=1`) |
+| Tooling | `make backup` / `make restore-drill BACKUP=…` / `make restore BACKUP=…` |
+| Remote | Optional `RESTIC_REPOSITORY` after local snapshot |
+| Drill | Temp Postgres restore; compare `task_count` to `manifest.json` |

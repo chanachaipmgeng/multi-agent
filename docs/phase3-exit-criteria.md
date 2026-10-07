@@ -61,7 +61,16 @@ make webhook-test KIND=issue
 | pause all / resume | PASS (task stayed QUEUED while paused; resume drains PEL) |
 | `/metrics` on adapter | PASS (`emaw_tasks_dispatched_total`) |
 | coordinator → `webhook-gateway:8700` | PASS (healthz 200) |
-| Unit tests | queue-adapter 38 · gateway 43 (integration deselected) |
+| Unit tests | queue-adapter 41 · gateway 44 (integration deselected; post §8.2) |
+
+## Close-out (2026-10-08) — A1 / A2 / A3
+
+| Gate | Result |
+|---|---|
+| Dashboard `:9119` with basic auth (DECISION-18) | PASS — no `Refusing to bind`; protected `/api/*` → 401 without session; login UI served |
+| Metrics §8.2 on adapter | PASS — `task_duration_seconds`, `llm_tokens_total{agent}`, `queue_depth`, `queue_oldest_age_seconds`, `agent_heartbeat_timestamp`, `task_state_total` |
+| Metrics §8.2 on gateway | PASS — `approval_latency_seconds`, `task_state_total{state}` on scrape |
+| Errata CLAIM_MIN_IDLE | Documented — router 30s / workers 10 min |
 
 ### Fixes from the drill
 
