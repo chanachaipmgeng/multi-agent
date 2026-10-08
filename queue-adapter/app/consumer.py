@@ -205,12 +205,35 @@ class Consumer:
                 handoff["artifacts"] = arts
 
             tokens = 0
+            model = "unknown"
+            kind = "total"
+            heal_iters = 0
             if result.usage:
                 tokens = int(
                     result.usage.get("total_tokens")
                     or result.usage.get("total")
                     or 0
                 )
+                model = str(
+                    result.usage.get("model")
+                    or result.usage.get("model_id")
+                    or "unknown"
+                )
+                kind = str(result.usage.get("kind") or "total")
+                heal_raw = (
+                    result.usage.get("self_heal_iterations")
+                    or result.usage.get("self_heal")
+                    or 0
+                )
+                try:
+                    heal_iters = int(heal_raw)
+                except (TypeError, ValueError):
+                    heal_iters = 0
+            if handoff is not None and not heal_iters:
+                try:
+                    heal_iters = int(handoff.get("self_heal_iterations") or 0)
+                except (TypeError, ValueError):
+                    heal_iters = 0
             if self.breaker is not None and tokens:
                 await self.breaker.record_tokens(self.agent_name, tokens)
 
@@ -244,7 +267,15 @@ class Consumer:
                 )
             if tokens:
                 metrics.observe_tokens(tokens)
-                metrics.observe_llm_tokens(tokens, agent=self.agent_name)
+                metrics.observe_llm_tokens(
+                    tokens, agent=self.agent_name, model=model, kind=kind
+                )
+                rate = float(getattr(self.s, "llm_usd_per_1k_tokens", 0.0) or 0.0)
+                metrics.observe_llm_cost_usd(
+                    (tokens / 1000.0) * rate, agent=self.agent_name
+                )
+            if heal_iters:
+                metrics.observe_self_heal(heal_iters, agent=self.agent_name)
 
             await self.redis.xadd(
                 self.s.results_stream,

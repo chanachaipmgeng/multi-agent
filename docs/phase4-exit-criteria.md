@@ -40,6 +40,16 @@
 | Runbook index | PASS — [docs/runbooks/README.md](runbooks/README.md) |
 | Weekly review template | PASS — ready; W1/W2 rows empty until production go-live |
 
+## Live evidence — §8.2 polish (metrics stubs + host ports) (2026-10-08)
+
+| Check | Result |
+|---|---|
+| Unit tests | PASS — `queue-adapter/tests/test_metrics.py` (stubs + labeled `llm_tokens`) |
+| New series | `self_heal_iterations`, `sandbox_exec_total`, `llm_cost_usd_total`; `llm_tokens_total{agent,model,kind}` |
+| Host ports | router `9101` · adapters `9102–9106` → container `:9100` (see `.env.example`) |
+| `curl 127.0.0.1:9101/metrics` | PASS — zero stubs present after image rebuild + recreate |
+| Cost rate | `LLM_USD_PER_1K_TOKENS` default `0` (no invented price) |
+
 ## Live evidence — sandbox skill-acceptance (2026-10-08)
 
 | Check | Result |

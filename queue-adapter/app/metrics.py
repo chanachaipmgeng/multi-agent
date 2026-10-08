@@ -27,6 +27,13 @@ _histograms: dict[str, dict[str, dict[str, Any]]] = {}
 _hist_buckets: dict[str, tuple[float, ...]] = {}
 _lock = threading.Lock()
 
+_LABELED_PREFIXES = (
+    "llm_tokens_total|",
+    "llm_cost_usd_total|",
+    "self_heal_iterations|",
+    "sandbox_exec_total|",
+)
+
 
 def set_label(key: str, value: str) -> None:
     with _lock:
@@ -50,6 +57,13 @@ def _label_key(labels: dict[str, str] | None) -> str:
     if not labels:
         return ""
     return ",".join(f'{k}="{v}"' for k, v in sorted(labels.items()))
+
+
+def _inc_labeled(name: str, amount: float, labels: dict[str, str]) -> None:
+    key = _label_key(labels)
+    with _lock:
+        store_key = f"{name}|{key}"
+        _counters[store_key] = _counters.get(store_key, 0.0) + float(amount)
 
 
 def set_gauge(name: str, value: float, labels: dict[str, str] | None = None) -> None:
@@ -89,12 +103,72 @@ def observe_task_duration(seconds: float, *, task_type: str, agent: str) -> None
     )
 
 
-def observe_llm_tokens(tokens: int, *, agent: str) -> None:
-    # Cumulative counter with agent label (separate from unlabeled emaw_tokens_total).
-    name = "llm_tokens_total"
-    key = _label_key({"agent": agent or "unknown"})
-    with _lock:
-        _counters[f"{name}|{key}"] = _counters.get(f"{name}|{key}", 0.0) + float(tokens)
+def observe_llm_tokens(
+    tokens: int,
+    *,
+    agent: str,
+    model: str = "unknown",
+    kind: str = "total",
+) -> None:
+    """Cumulative counter ``llm_tokens_total{agent,model,kind}`` (§8.2)."""
+    _inc_labeled(
+        "llm_tokens_total",
+        float(tokens),
+        {
+            "agent": agent or "unknown",
+            "model": model or "unknown",
+            "kind": kind or "total",
+        },
+    )
+
+
+def observe_llm_cost_usd(usd: float, *, agent: str) -> None:
+    """Cumulative counter ``llm_cost_usd_total{agent}`` (§8.2 stub)."""
+    _inc_labeled(
+        "llm_cost_usd_total",
+        float(usd),
+        {"agent": agent or "unknown"},
+    )
+
+
+def observe_self_heal(iterations: int | float, *, agent: str) -> None:
+    """Cumulative counter ``self_heal_iterations{agent}`` (§8.2)."""
+    _inc_labeled(
+        "self_heal_iterations",
+        float(iterations),
+        {"agent": agent or "unknown"},
+    )
+
+
+def inc_sandbox_exec(exit_code: int) -> None:
+    """Counter ``sandbox_exec_total{exit_code}`` (§8.2)."""
+    _inc_labeled(
+        "sandbox_exec_total",
+        1.0,
+        {"exit_code": str(int(exit_code))},
+    )
+
+
+def _append_labeled_counter(
+    lines: list[str],
+    *,
+    name: str,
+    help_txt: str,
+    stub_labels: dict[str, str],
+) -> None:
+    prefix = f"{name}|"
+    keys = [k for k in _counters if k.startswith(prefix)]
+    lines.append(f"# HELP {name} {help_txt}")
+    lines.append(f"# TYPE {name} counter")
+    if not keys:
+        stub_key = _label_key(stub_labels)
+        lbl = f"{{{stub_key}}}" if stub_key else ""
+        lines.append(f"{name}{lbl} 0.0")
+        return
+    for k in sorted(keys):
+        label = k.split("|", 1)[1]
+        lbl = f"{{{label}}}" if label else ""
+        lines.append(f"{name}{lbl} {_counters[k]}")
 
 
 def render() -> bytes:
@@ -117,15 +191,30 @@ def render() -> bytes:
             f"emaw_tokens_total{_fmt_labels()} {_counters['emaw_tokens_total']}",
         ]
 
-        # llm_tokens_total{agent}
-        token_keys = [k for k in _counters if k.startswith("llm_tokens_total|")]
-        if token_keys:
-            lines.append("# HELP llm_tokens_total Cumulative LLM tokens by agent")
-            lines.append("# TYPE llm_tokens_total counter")
-            for k in sorted(token_keys):
-                label = k.split("|", 1)[1]
-                lbl = f"{{{label}}}" if label else ""
-                lines.append(f"llm_tokens_total{lbl} {_counters[k]}")
+        _append_labeled_counter(
+            lines,
+            name="llm_tokens_total",
+            help_txt="Cumulative LLM tokens by agent/model/kind",
+            stub_labels={"agent": "unset", "model": "unknown", "kind": "total"},
+        )
+        _append_labeled_counter(
+            lines,
+            name="llm_cost_usd_total",
+            help_txt="Cumulative estimated LLM cost in USD by agent",
+            stub_labels={"agent": "unset"},
+        )
+        _append_labeled_counter(
+            lines,
+            name="self_heal_iterations",
+            help_txt="Cumulative self-heal iterations by agent",
+            stub_labels={"agent": "unset"},
+        )
+        _append_labeled_counter(
+            lines,
+            name="sandbox_exec_total",
+            help_txt="Sandbox / Hermes CLI process exits by exit code",
+            stub_labels={"exit_code": "0"},
+        )
 
         for name, series_map in sorted(_gauges.items()):
             help_txt = {
@@ -178,7 +267,7 @@ def reset_for_tests() -> None:
     """Clear all series (unit tests only)."""
     with _lock:
         for k in list(_counters):
-            if k.startswith("llm_tokens_total|"):
+            if any(k.startswith(p) for p in _LABELED_PREFIXES):
                 del _counters[k]
             else:
                 _counters[k] = 0.0

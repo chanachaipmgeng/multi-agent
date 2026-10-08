@@ -19,10 +19,14 @@
 ```bash
 make up-observability
 # Grafana http://127.0.0.1:3000 · Prometheus :9090 · Alertmanager :9093
+# Adapter metrics on host: router :9101 · FE :9102 · BE :9103 · reviewer :9104 · qa :9105 · devops :9106
+curl -fsS http://127.0.0.1:9101/metrics | head
 ```
 
 Compose profile `observability`: Loki, Tempo, OTel Collector, Promtail (docker log redaction),
 Prometheus, Alertmanager (Telegram when `TELEGRAM_CHAT_ID` set), Grafana (4 EMAW dashboards).
+Prometheus still scrapes adapters at `*:9100` on the Docker network; host ports are for local debug.
+Optional `LLM_USD_PER_1K_TOKENS` (default `0`) feeds `llm_cost_usd_total` — do not invent a vendor price.
 See `docs/runbooks/alerts.md`.
 
 ## Supply chain (D4.6 / E12)

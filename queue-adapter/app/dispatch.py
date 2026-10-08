@@ -23,6 +23,8 @@ from urllib.parse import urljoin
 
 import httpx
 
+from . import metrics
+
 log = logging.getLogger("emaw.adapter.dispatch")
 
 # Terminal statuses reported by Hermes /v1/runs (see API server docs).
@@ -208,7 +210,13 @@ class HermesApiDispatcher:
     @staticmethod
     def _extract_usage(data: dict[str, Any]) -> dict[str, Any] | None:
         usage = data.get("usage") or data.get("token_usage")
-        return usage if isinstance(usage, dict) else None
+        if not isinstance(usage, dict):
+            return None
+        # Promote top-level model onto usage so consumer can label llm_tokens_total.
+        out = dict(usage)
+        if "model" not in out and data.get("model"):
+            out["model"] = data["model"]
+        return out
 
     async def _poll_until_done(self, run_id: str, task_id: str) -> DispatchResult:
         deadline = time.monotonic() + self._timeout
@@ -312,9 +320,11 @@ class HermesCliDispatcher:
             proc.kill()
             return DispatchResult(ok=False, detail="hermes cli timed out", retryable=True)
         text = out.decode("utf-8", errors="replace")[-2000:]
-        if proc.returncode == 0:
+        rc = int(proc.returncode if proc.returncode is not None else -1)
+        metrics.inc_sandbox_exec(rc)
+        if rc == 0:
             return DispatchResult(ok=True, detail=text)
-        return DispatchResult(ok=False, detail=f"exit {proc.returncode}: {text}", retryable=True)
+        return DispatchResult(ok=False, detail=f"exit {rc}: {text}", retryable=True)
 
     async def aclose(self) -> None:
         return None

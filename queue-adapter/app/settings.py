@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     projects_file: str | None = Field(default=None, alias="PROJECTS_FILE")
     control_prefix: str = Field(default="emaw:control", alias="CONTROL_PREFIX")
     metrics_port: int = Field(default=9100, alias="METRICS_PORT")
+    # Cost estimate for llm_cost_usd_total (§8.2). Default 0 — do not invent a vendor price.
+    llm_usd_per_1k_tokens: float = Field(default=0.0, alias="LLM_USD_PER_1K_TOKENS")
     token_budget_per_agent_hour: int = Field(
         default=500_000, alias="TOKEN_BUDGET_PER_AGENT_HOUR"
     )

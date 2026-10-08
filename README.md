@@ -110,7 +110,7 @@ Task envelope (design §4.3): `task_id`, `trace_id`, `type`, `project`, `source`
 | Local-free all 6 agents (DECISION-15) | `docker-compose.local-free.yml`, `OLLAMA_CONTEXT_LENGTH=65536`, `model.ollama_num_ctx: 65536` |
 | Phase 3 router fan-out (DECISION-16) | `queue-adapter` `MODE=router|worker`, HANDOFF YAML, MinIO SigV4 artifacts |
 | Dashboard basic auth (DECISION-18) | `secrets/dashboard_password` → `HERMES_DASHBOARD_BASIC_AUTH_*` · `:9119` |
-| Metrics §8.2 | adapter gauges/histograms · gateway `approval_latency_seconds` |
+| Metrics §8.2 | adapter `:9101–9106/metrics` (host) · stubs `self_heal` / `sandbox_exec` / `llm_cost_usd` · gateway `approval_latency_seconds` |
 | Backup / restore (D4.5) | `make backup` · `make restore-drill BACKUP=…` · `docs/runbooks/restore.md` |
 | Supply chain (D4.6) | digest-pinned images · `scripts/pin-digests.sh` · CI Trivy |
 | Observability (D4.1) | `make up-observability` · Grafana :3000 · 4 dashboards · Alertmanager → Telegram |

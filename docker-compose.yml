@@ -153,6 +153,9 @@ services:
       - OUTBOX_DIR=/var/lib/queue-adapter/outbox
       # Reclaim pause-deferred / crashed deliveries within 30s (design E11).
       - CLAIM_MIN_IDLE_MS=30000
+      - LLM_USD_PER_1K_TOKENS=${LLM_USD_PER_1K_TOKENS:-0}
+    ports:
+      - "127.0.0.1:${ROUTER_METRICS_PORT:-9101}:9100"
 
   adapter-dev-frontend:
     <<: *adapter-common
@@ -178,11 +181,14 @@ services:
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - CONTROL_PREFIX=emaw:control
       - METRICS_PORT=9100
+      - LLM_USD_PER_1K_TOKENS=${LLM_USD_PER_1K_TOKENS:-0}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
       - MINIO_SECRET_KEY_FILE=/run/secrets/minio_root_password
       - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
       - PROJECTS_FILE=/config/projects.yaml
+    ports:
+      - "127.0.0.1:${ADAPTER_FE_METRICS_PORT:-9102}:9100"
 
   adapter-dev-backend:
     <<: *adapter-common
@@ -208,11 +214,14 @@ services:
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - CONTROL_PREFIX=emaw:control
       - METRICS_PORT=9100
+      - LLM_USD_PER_1K_TOKENS=${LLM_USD_PER_1K_TOKENS:-0}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
       - MINIO_SECRET_KEY_FILE=/run/secrets/minio_root_password
       - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
       - PROJECTS_FILE=/config/projects.yaml
+    ports:
+      - "127.0.0.1:${ADAPTER_BE_METRICS_PORT:-9103}:9100"
 
   adapter-reviewer:
     <<: *adapter-common
@@ -238,11 +247,14 @@ services:
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - CONTROL_PREFIX=emaw:control
       - METRICS_PORT=9100
+      - LLM_USD_PER_1K_TOKENS=${LLM_USD_PER_1K_TOKENS:-0}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
       - MINIO_SECRET_KEY_FILE=/run/secrets/minio_root_password
       - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
       - PROJECTS_FILE=/config/projects.yaml
+    ports:
+      - "127.0.0.1:${ADAPTER_REVIEWER_METRICS_PORT:-9104}:9100"
 
   adapter-qa:
     <<: *adapter-common
@@ -268,11 +280,14 @@ services:
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - CONTROL_PREFIX=emaw:control
       - METRICS_PORT=9100
+      - LLM_USD_PER_1K_TOKENS=${LLM_USD_PER_1K_TOKENS:-0}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
       - MINIO_SECRET_KEY_FILE=/run/secrets/minio_root_password
       - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
       - PROJECTS_FILE=/config/projects.yaml
+    ports:
+      - "127.0.0.1:${ADAPTER_QA_METRICS_PORT:-9105}:9100"
 
   adapter-devops:
     <<: *adapter-common
@@ -298,11 +313,14 @@ services:
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - CONTROL_PREFIX=emaw:control
       - METRICS_PORT=9100
+      - LLM_USD_PER_1K_TOKENS=${LLM_USD_PER_1K_TOKENS:-0}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-http://minio:9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-emaw}
       - MINIO_SECRET_KEY_FILE=/run/secrets/minio_root_password
       - MINIO_BUCKET=${MINIO_BUCKET:-emaw-artifacts}
       - PROJECTS_FILE=/config/projects.yaml
+    ports:
+      - "127.0.0.1:${ADAPTER_DEVOPS_METRICS_PORT:-9106}:9100"
 
   # Phase 1–2 compat: single adapter (profile `single` — do not combine with router workers)
   queue-adapter:
