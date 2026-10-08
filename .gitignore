@@ -59,3 +59,9 @@ backups/
 *.log
 .DS_Store
 node_modules/
+
+# Nested repo for agent worktrees (skill-acceptance)
+examples/sandbox-smoke/.git/
+examples/sandbox-smoke/.skill-accept-*.json
+examples/sandbox-smoke/.skill-accept-drill-*.log
+

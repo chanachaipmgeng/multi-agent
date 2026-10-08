@@ -16,10 +16,24 @@ do not mark `Promoted?` until live runs pass.
 
 See also [`phase2-exit-criteria.md`](phase2-exit-criteria.md).
 
+### Sandbox harness (no pilot / DECISION-11)
+
+```bash
+# Mechanical gates (work branch → test → commit → no push) ×3
+docker cp scripts/skill-accept-sandbox-drill.sh emaw-dev-backend:/tmp/
+docker exec emaw-dev-backend bash /tmp/skill-accept-sandbox-drill.sh
+
+# Optional Hermes /v1/runs probe (local LLM may complete without executing tools)
+docker cp scripts/skill-accept-sandbox.py emaw-dev-backend:/tmp/
+docker exec emaw-dev-backend python /tmp/skill-accept-sandbox.py --rounds 3 --timeout 1800
+```
+
+Evidence files (gitignored under `examples/sandbox-smoke/`): `.skill-accept-*.json`, `.skill-accept-drill-*.log`.
+
 | Skill | Scenario | Date | Runs (pass/fail) | Notes | Promoted? |
 |---|---|---|---|---|---|
-| `dev-flow` | sandbox-smoke subtract + test | | | Phase 0 exit — [`phase0-runbook.md`](phase0-runbook.md) | |
-| `review-code` | self-review after dev-flow | | | Phase 0 | |
+| `dev-flow` | sandbox-smoke subtract + test | 2026-10-08 | 2/0 drill + hermes_api incomplete | Drill r1 `c672f8f` subtract, r2 `214987c` multiply; no push. hermes_api runs `run_ab92…`/`run_183d…` status=completed but tools not applied (local LLM). | no (compose drill only; promote after Telegram/cloud) |
+| `review-code` | self-review after dev-flow | 2026-10-08 | 1/0 drill | Drill r3 `c4ec473` — `SMOKE_FORCE_FAIL=1` → exit 1 then green; empty commit. hermes_api `run_4929…` incomplete tools. | no |
 | `human-approval-gate` | push request → n / timeout / y | | | Phase 0 HITL | |
 | `resolve-issue` | Issue `agent-ready` → MR | | | Phase 1 | |
 | `incident-triage` | failed job → triage ≤ 2 min | | | Phase 1 | |
@@ -31,6 +45,17 @@ See also [`phase2-exit-criteria.md`](phase2-exit-criteria.md).
 | `deep-review` | `codebase_impact` + `codebase_graph_*` on diff symbols | | | MCP enabled; record live runs | |
 | `fix-pipeline` / `deploy-prod` | CI hotfix / prod deploy HITL | | | Phase 3 | |
 | `write-e2e` / `smoke-test` | Playwright / smoke on worktree `:e2e_port` | | | Phase 3 | |
+
+## Live evidence — sandbox-smoke (2026-10-08)
+
+| Check | Result |
+|---|---|
+| Nested git for worktrees | PASS — `examples/sandbox-smoke/.git` (ignored by parent) |
+| `./test.sh` CRLF fixed | PASS — green exit 0 / `SMOKE_FORCE_FAIL=1` exit 1 |
+| Drill ≥3 rounds | PASS — `scripts/skill-accept-sandbox-drill.sh` → 3/3 (log `.skill-accept-drill-20261008T031457Z.log`) |
+| hermes_api ×3 | PARTIAL — 3/3 HTTP completed; local-free model did not execute tools / no agent commit |
+| Code artifacts | `subtract` + `multiply` + tests on sandbox main |
+| Pilot Telegram acceptance | BLOCKED — DECISION-8 / 11 ([org-unblock.md](org-unblock.md)) |
 
 ## Switch-context vs profiles (Phase 2 review)
 

@@ -37,7 +37,7 @@ See `docs/runbooks/alerts.md`.
 
 ## Promote checklist
 
-1. Fill DECISION-8 / 11 / 5 / 2 in `config/org.yaml`
+1. Fill DECISION-8 / 11 / 5 / 2 in `config/org.yaml` (see [`org-unblock.md`](org-unblock.md) — do not invent values)
 2. `cp config/rbac.example.yaml config/rbac.yaml` and set real user ids
 3. Staging: cloud LLM keys + tunnel + GitLab webhook to staging hostname
 4. Prod: `make up-prod` on the VM after `docs/deploy-linux-vm.md`

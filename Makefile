@@ -181,4 +181,8 @@ webhook-test: ## send a sample Issue Hook to the running gateway (KIND=issue|pip
 verify-phase0: ## run the Phase 0 exit-criteria self-check
 	@scripts/verify-phase0.sh
 
-.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-socraticode socraticode-check up-local-free local-llm-pull local-free-check up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration lint gitleaks webhook-test verify-phase0
+skill-accept-sandbox: ## ≥3 sandbox-smoke skill-acceptance drills (needs emaw-dev-backend up)
+	@docker cp scripts/skill-accept-sandbox-drill.sh emaw-dev-backend:/tmp/skill-accept-sandbox-drill.sh
+	@docker exec emaw-dev-backend bash /tmp/skill-accept-sandbox-drill.sh
+
+.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-socraticode socraticode-check up-local-free local-llm-pull local-free-check up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration lint gitleaks webhook-test verify-phase0 skill-accept-sandbox

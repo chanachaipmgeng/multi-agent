@@ -21,3 +21,11 @@ class SmokeTests(unittest.TestCase):
     def test_forced_failure_switch(self) -> None:
         """SMOKE_FORCE_FAIL=1 turns the suite red so the self-heal loop can be rehearsed."""
         self.assertFalse(os.environ.get("SMOKE_FORCE_FAIL") == "1", "forced failure requested")
+
+    def test_subtract(self) -> None:
+        from smoke import subtract
+        self.assertEqual(subtract(5, 2), 3)
+
+    def test_multiply(self) -> None:
+        from smoke import multiply
+        self.assertEqual(multiply(3, 4), 12)

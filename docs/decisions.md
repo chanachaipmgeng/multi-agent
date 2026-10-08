@@ -83,6 +83,17 @@ Obsolete assumption: early drafts treated DECISION-6 as “blocked until SECRET_
 | Session secret | `secrets/dashboard_session_secret` or fall back to `hermes_api_key` |
 | Cloudflare Access | Still planned for Phase 4 (DECISION-5); basic auth is the local/LAN gate |
 
+## Org-blocked decisions (fill `config/org.yaml`)
+
+Do **not** invent values. Field map and unlock order: [`docs/org-unblock.md`](org-unblock.md).
+
+| Decision | `org.yaml` fields | Unlocks |
+|---|---|---|
+| DECISION-2 | `hosting.production_vm` | `make up-prod` on Linux VM |
+| DECISION-5 | `org.domain`, `cloudflare_account_owner`, `*_hostname` | D4.3 Access/WAF, Named Tunnel |
+| DECISION-8 | `roles.admin` / `approver` / `developer` | Telegram RBAC, Flow C |
+| DECISION-11 | `pilot_repos.*.gitlab_path` / `gitlab_project_id` | real pilot skill acceptance |
+
 ## DECISION-19 — Backup policy (D4.5)
 
 | Item | Decision |

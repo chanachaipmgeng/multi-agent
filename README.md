@@ -47,7 +47,7 @@ Everything is auditable · Grow in phases
 | `examples/sandbox-smoke/` | minimal pilot project whose `./test.sh` returns exit 0/1 correctly |
 | `cloudflared/` | Named Tunnel config template + runbook (Phase 1, blocked on domain) |
 | `scripts/`, `Makefile` | prereq check, SOPS secrets, migrate, Hermes configure, onboard repo, skill sync, test webhook, Phase 0 verifier, **tunnel setup/status, GitLab webhook register, token scope check** |
-| `docs/` | exit criteria, `secrets.md`, `environments.md`, `skill-acceptance.md`, `runbooks/{tunnel,token-rotation,restore,agent-stuck,rollback-mr}.md` |
+| `docs/` | exit criteria, `secrets.md`, `environments.md`, `org-unblock.md`, `skill-acceptance.md`, `runbooks/` (E14 index) |
 | `.env.example`, `.sops.yaml`, `.gitleaks.toml`, `.agentignore`, `.pre-commit-config.yaml` | secrets & hygiene |
 
 ## Quick start (รันในเครื่อง / Run locally)
