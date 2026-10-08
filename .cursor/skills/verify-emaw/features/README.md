@@ -24,3 +24,4 @@ Maintained source for proving operator-facing behavior of the Enterprise Multi-A
 - [Observability](./observability.md) — Prometheus, Alertmanager, Grafana dashboards
 - [Webhook enqueue](./webhook-enqueue.md) — sample Issue Hook
 - [Pause control](./pause-control.md) — internal pause/resume
+- [Operator console](./operator-console.md) — `/internal/projects` + control status + optional `:8088`

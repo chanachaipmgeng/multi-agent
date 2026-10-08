@@ -1,0 +1,25 @@
+{
+  "action": "completed",
+  "workflow_job": {
+    "id": 88001,
+    "run_id": 77001,
+    "name": "test",
+    "head_branch": "main",
+    "head_sha": "abc123def456",
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/acme/sandbox-github/actions/runs/77001/jobs/88001",
+    "labels": ["ubuntu-latest"]
+  },
+  "repository": {
+    "id": 88888,
+    "name": "sandbox-github",
+    "full_name": "acme/sandbox-github",
+    "html_url": "https://github.com/acme/sandbox-github",
+    "default_branch": "main"
+  },
+  "sender": {
+    "id": 1001,
+    "login": "github-actions[bot]"
+  }
+}

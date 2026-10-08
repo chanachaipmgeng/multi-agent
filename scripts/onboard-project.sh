@@ -53,10 +53,19 @@ if [ -n "$TEST_CMD" ]; then
   esac
 fi
 
+# Detect scm hint from URL (override with SCM=github|gitlab)
+SCM_HINT="${SCM:-}"
+case "$URL" in
+  *github.com*|*github.*) SCM_HINT="${SCM_HINT:-github}" ;;
+  *) SCM_HINT="${SCM_HINT:-gitlab}" ;;
+esac
+
 cat <<EOF
 
 Next: add to config/projects.yaml
+  # --- GitLab ---
   - key: $KEY
+    scm: gitlab
     gitlab_project_id: <id>
     path_with_namespace: "<group>/$KEY"
     workspace_path: /workspace/$KEY
@@ -66,4 +75,19 @@ Next: add to config/projects.yaml
     opt_in_label: agent-ready
     auto_push_branches: []
     data_classification: internal | confidential | restricted
+    llm_backend: cloud
+
+  # --- GitHub (detected hint for this URL: $SCM_HINT) ---
+  - key: $KEY
+    scm: github
+    repo: "<owner>/$KEY"
+    repo_id: <numeric id from GitHub API>
+    workspace_path: /workspace/$KEY
+    default_worker: dev-backend | dev-frontend
+    allowed_workers: [...]
+    test_command: "${TEST_CMD:-<test command>}"
+    opt_in_label: agent-ready
+    auto_push_branches: []
+    data_classification: internal | confidential | restricted
+    llm_backend: cloud
 EOF

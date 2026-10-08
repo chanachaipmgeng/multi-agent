@@ -1,6 +1,7 @@
 # Webhook enqueue
 
-Operators (or GitLab) POST an Issue Hook; the gateway authenticates, normalizes, and queues a task.
+Operators (or GitLab/GitHub) POST an issue event; the gateway authenticates, normalizes, and queues a task.
+This feature recipe drives the **GitLab** fixture path; GitHub uses `POST /webhook/github` + HMAC (manual / future recipe).
 
 ## Sub-features
 
@@ -9,7 +10,7 @@ Operators (or GitLab) POST an Issue Hook; the gateway authenticates, normalizes,
 
 ## How to get to it (user POV)
 
-- GitLab project webhook → `…/webhook/gitlab`, or
+- GitLab project webhook → `…/webhook/gitlab`, or GitHub → `…/webhook/github`, or
 - `make webhook-test KIND=issue` / `scripts/send-test-webhook.sh issue`.
 
 ## Driving it with verify-emaw

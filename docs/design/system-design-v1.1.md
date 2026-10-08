@@ -126,7 +126,7 @@ sources:
 ### 2.4 Non-goals
 
 - ไม่พยายามให้ agent "ออกแบบสถาปัตยกรรม" แทนมนุษย์ — บทบาทสถาปนิกเป็นของ Developer + Cursor IDE
-- ไม่สร้าง UI ใหม่สำหรับสั่งงาน (ใช้ Telegram + GitLab UI + Hermes local dashboard)
+- ไม่สร้าง product UI กว้างแทน Telegram/GitHost (ประชุม, PM tool, knowledge graph เป็น roadmap ภายหลัง) — **อนุญาต** Operator Console ที่เป็น client ของ `/internal/*` สำหรับดู task / HITL inbox / pause·safe-mode / projects; Telegram ยังเป็น HITL หลักจนกว่า DECISION-8/5 พร้อม (DECISION-20)
 - ไม่แทนที่ GitLab CI/CD — ระบบเป็นผู้ trigger/ผู้ฟัง CI ไม่ใช่ CI เอง
 - ไม่ทำ fully-autonomous production deploy
 

@@ -17,6 +17,8 @@ Fill real values in [`config/org.yaml`](../config/org.yaml) — **do not invent*
 | `pilot_repos.*.gitlab_project_id` | DECISION-11 | webhook routing / labels | `make gitlab-webhook` |
 | `roles.admin` / `approver` / `developer` | DECISION-8 | Telegram RBAC, Flow C approvals | copy into `hermes-data/coordinator/rbac.yaml` |
 
+GitHub pilots (DECISION-4): put `scm: github`, `repo: owner/name`, and `repo_id` in [`config/projects.yaml`](../config/projects.yaml) — **no** GitLab `path_with_namespace` / `gitlab_project_id` required. Point the GitHub webhook at `/webhook/github` with `SECRET_GITHUB_WEBHOOK_SECRET`.
+
 ## Also required outside `org.yaml`
 
 | Item | Decision | Where | Next command |
@@ -33,7 +35,7 @@ Fill real values in [`config/org.yaml`](../config/org.yaml) — **do not invent*
 2. **DECISION-2** `hosting.production_vm` → Ubuntu 24.04 + Docker → `make up-prod`
 3. **DECISION-5** domain + Cloudflare owner + hostnames → `make ingress-render` → tunnel DNS + Access/WAF (**D4.3**)
 4. **DECISION-8** Telegram user ids in `roles.*` → sync rbac → Flow C HITL
-5. **DECISION-11** pilot `gitlab_path` + `gitlab_project_id` → onboard + skill acceptance on pilots
+5. **DECISION-11** pilot GitLab path/id **or** GitHub `repo`/`repo_id` in `projects.yaml` → onboard + skill acceptance on pilots
 6. **DECISION-3/9** legal → complete [compliance-review.md](compliance-review.md)
 
 Until these are filled, keep placeholders as `"<to confirm>"` / `null` / `[]`. Sandbox drills use `examples/sandbox-smoke` and do **not** require DECISION-11.

@@ -2,6 +2,10 @@
 
 Skills and conventions copied to every agent profile by `make skills-sync`.
 
+| Skill | Purpose |
+|---|---|
+| [`open-change-request`](open-change-request.md) | After HITL `push_work_branch_and_open_mr`, open GitLab MR or GitHub PR from `inputs.scm` |
+
 ## HANDOFF block (Phase 3 / design §4.5)
 
 Every skill that finishes a run **must** end its reply with a YAML block the

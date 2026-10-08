@@ -10,6 +10,7 @@
 #   onprem-llm  → Ollama for repos classified confidential/restricted (DECISION-3)
 #   socraticode   → Ollama (embeddings) + Qdrant for SocratiCode MCP (DECISION-6 / Phase 2)
 #   observability → OTel + Loki + Tempo + Prometheus + Grafana + Alertmanager (D4.1)
+#   console       → Operator Console SPA (DECISION-20) on :8088
 #
 # Secrets are file-based (./secrets/*, created by `make secrets-decrypt` from .env.enc via SOPS).
 # No service publishes a port outside 127.0.0.1; external traffic arrives only via the tunnel.
@@ -42,7 +43,7 @@ x-hermes-common: &hermes-common
 x-adapter-common: &adapter-common
   build: ./queue-adapter
   image: emaw/queue-adapter:dev
-  secrets: [pg_password, gitlab_token_readonly, telegram_token, hermes_api_key, minio_root_password]
+  secrets: [pg_password, gitlab_token_readonly, github_token_readonly, telegram_token, hermes_api_key, minio_root_password]
   volumes:
     - adapter-outbox:/var/lib/queue-adapter
     - ./config:/config:ro
@@ -103,10 +104,11 @@ services:
       - PROJECTS_FILE=/config/projects.yaml
       - RBAC_FILE=/config/rbac.yaml
       - GITLAB_WEBHOOK_SECRET_FILE=/run/secrets/gitlab_webhook_secret
+      - GITHUB_WEBHOOK_SECRET_FILE=/run/secrets/github_webhook_secret
       - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
       - TASK_STREAM=stream:tasks
       - CONTROL_PREFIX=emaw:control
-    secrets: [gitlab_webhook_secret, pg_password, hermes_api_key]
+    secrets: [gitlab_webhook_secret, github_webhook_secret, pg_password, hermes_api_key]
     volumes: ["./config:/config:ro"]
     ports: ["127.0.0.1:${GATEWAY_PORT:-8700}:8700"]
     networks: [edge, control]
@@ -149,6 +151,8 @@ services:
       - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - GITHUB_TOKEN_FILE=/run/secrets/github_token_readonly
+      - GITHUB_BASE_URL=${GITHUB_BASE_URL:-https://api.github.com}
       - HERMES_API_KEY_FILE=/run/secrets/hermes_api_key
       - OUTBOX_DIR=/var/lib/queue-adapter/outbox
       # Reclaim pause-deferred / crashed deliveries within 30s (design E11).
@@ -177,6 +181,8 @@ services:
       - OUTBOX_DIR=/var/lib/queue-adapter/outbox
       - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
       - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - GITHUB_TOKEN_FILE=/run/secrets/github_token_readonly
+      - GITHUB_BASE_URL=${GITHUB_BASE_URL:-https://api.github.com}
       - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - CONTROL_PREFIX=emaw:control
@@ -210,6 +216,8 @@ services:
       - OUTBOX_DIR=/var/lib/queue-adapter/outbox
       - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
       - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - GITHUB_TOKEN_FILE=/run/secrets/github_token_readonly
+      - GITHUB_BASE_URL=${GITHUB_BASE_URL:-https://api.github.com}
       - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - CONTROL_PREFIX=emaw:control
@@ -243,6 +251,8 @@ services:
       - OUTBOX_DIR=/var/lib/queue-adapter/outbox
       - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
       - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - GITHUB_TOKEN_FILE=/run/secrets/github_token_readonly
+      - GITHUB_BASE_URL=${GITHUB_BASE_URL:-https://api.github.com}
       - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - CONTROL_PREFIX=emaw:control
@@ -276,6 +286,8 @@ services:
       - OUTBOX_DIR=/var/lib/queue-adapter/outbox
       - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
       - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - GITHUB_TOKEN_FILE=/run/secrets/github_token_readonly
+      - GITHUB_BASE_URL=${GITHUB_BASE_URL:-https://api.github.com}
       - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - CONTROL_PREFIX=emaw:control
@@ -309,6 +321,8 @@ services:
       - OUTBOX_DIR=/var/lib/queue-adapter/outbox
       - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
       - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - GITHUB_TOKEN_FILE=/run/secrets/github_token_readonly
+      - GITHUB_BASE_URL=${GITHUB_BASE_URL:-https://api.github.com}
       - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - CONTROL_PREFIX=emaw:control
@@ -344,6 +358,8 @@ services:
       - OUTBOX_DIR=/var/lib/queue-adapter/outbox
       - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
       - GITLAB_TOKEN_FILE=/run/secrets/gitlab_token_readonly
+      - GITHUB_TOKEN_FILE=/run/secrets/github_token_readonly
+      - GITHUB_BASE_URL=${GITHUB_BASE_URL:-https://api.github.com}
       - TELEGRAM_TOKEN_FILE=/run/secrets/telegram_token
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - CONTROL_PREFIX=emaw:control
@@ -443,6 +459,7 @@ services:
       - ./hermes-data/dev-frontend/skills:/opt/data/skills:ro
       - ./hermes-data/dev-frontend/.env:/opt/data/.env:ro
       - ./workspace/frontend-app:/workspace/frontend-app
+      - ./workspace:/workspace
       - ./workspace/.worktrees:/workspace/.worktrees
       - ./config:/config:ro
       - ./tools/gitleaks:/usr/local/bin/gitleaks:ro
@@ -472,6 +489,7 @@ services:
       - ./hermes-data/dev-backend/.env:/opt/data/.env:ro
       - ./workspace/backend-api:/workspace/backend-api
       - ./examples/sandbox-smoke:/workspace/sandbox-smoke
+      - ./workspace:/workspace
       - ./workspace/.worktrees:/workspace/.worktrees
       - ./config:/config:ro
       - ./tools/gitleaks:/usr/local/bin/gitleaks:ro
@@ -698,8 +716,23 @@ services:
     profiles: ["observability"]
     restart: unless-stopped
 
+  # DECISION-20 — Operator Console (thin SPA → /internal/*)
+  operator-console:
+    build: ./operator-console
+    image: emaw/operator-console:dev
+    ports: ["127.0.0.1:${CONSOLE_PORT:-8088}:80"]
+    networks: [control]
+    depends_on: [webhook-gateway]
+    profiles: ["console"]
+    read_only: true
+    tmpfs: ["/var/cache/nginx", "/var/run", "/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped
+
 secrets:
   gitlab_webhook_secret: { file: ./secrets/gitlab_webhook_secret }
+  github_webhook_secret: { file: ./secrets/github_webhook_secret }
   pg_password:           { file: ./secrets/pg_password }
   tunnel_token:          { file: ./secrets/tunnel_token }
   telegram_token:        { file: ./secrets/telegram_token }
@@ -715,6 +748,11 @@ secrets:
   gitlab_token_backend:  { file: ./secrets/gitlab_token_backend }
   gitlab_token_ci:       { file: ./secrets/gitlab_token_ci }
   gitlab_token_qa:       { file: ./secrets/gitlab_token_qa }
+  github_token_readonly: { file: ./secrets/github_token_readonly }
+  github_token_frontend: { file: ./secrets/github_token_frontend }
+  github_token_backend:  { file: ./secrets/github_token_backend }
+  github_token_ci:       { file: ./secrets/github_token_ci }
+  github_token_qa:       { file: ./secrets/github_token_qa }
   hermes_api_key:        { file: ./secrets/hermes_api_key }
   minio_agent_secret:    { file: ./secrets/minio_agent_secret }
   minio_root_password:   { file: ./secrets/minio_root_password }

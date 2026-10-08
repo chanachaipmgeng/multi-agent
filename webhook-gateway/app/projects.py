@@ -1,26 +1,32 @@
 """Project allowlist and deterministic routing rules (design §4.4, §5.3).
 
-``projects.yaml`` is the single source of truth for which GitLab projects the
+``projects.yaml`` is the single source of truth for which SCM projects the
 workspace is allowed to act on, which worker owns each repo, and the opt-in label.
+Supports ``scm: gitlab`` (default) and ``scm: github``.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 KNOWN_WORKERS: frozenset[str] = frozenset(
     {"coordinator", "dev-frontend", "dev-backend", "reviewer", "devops", "qa"}
 )
 
+ScmKind = Literal["gitlab", "github"]
+
 
 class Project(BaseModel):
     key: str
-    gitlab_project_id: int
-    path_with_namespace: str
+    scm: ScmKind = "gitlab"
+    gitlab_project_id: int | None = None
+    path_with_namespace: str = ""
+    repo: str | None = None  # owner/name (GitHub; also alias of path)
+    repo_id: int | None = None  # GitHub numeric repository id
     workspace_path: str
     default_worker: str
     allowed_workers: list[str] = Field(default_factory=list)
@@ -30,6 +36,24 @@ class Project(BaseModel):
     auto_push_branches: list[str] = Field(default_factory=list)  # DECISION-8: empty = always ask
     data_classification: str = "internal"  # internal | confidential | restricted (DECISION-3)
     llm_backend: str = "cloud"  # cloud | ollama (hybrid policy, DECISION-3)
+
+    @model_validator(mode="after")
+    def _require_scm_ids(self) -> Project:
+        if self.scm == "gitlab":
+            if self.gitlab_project_id is None and not self.path_with_namespace:
+                raise ValueError(
+                    f"project {self.key!r} (scm=gitlab) needs gitlab_project_id or path_with_namespace"
+                )
+        elif self.scm == "github":
+            if self.repo_id is None and not (self.repo or self.path_with_namespace):
+                raise ValueError(
+                    f"project {self.key!r} (scm=github) needs repo_id or repo/path_with_namespace"
+                )
+            if not self.repo and self.path_with_namespace:
+                self.repo = self.path_with_namespace
+            if not self.path_with_namespace and self.repo:
+                self.path_with_namespace = self.repo
+        return self
 
 
 class RoutingRules(BaseModel):
@@ -75,13 +99,33 @@ class ProjectRegistry(BaseModel):
     def by_gitlab_id(self, project_id: int | None) -> Project | None:
         if project_id is None:
             return None
-        return next((p for p in self.projects if p.gitlab_project_id == project_id), None)
+        return next(
+            (
+                p
+                for p in self.projects
+                if p.scm == "gitlab" and p.gitlab_project_id == project_id
+            ),
+            None,
+        )
+
+    def by_github_id(self, repo_id: int | None) -> Project | None:
+        if repo_id is None:
+            return None
+        return next(
+            (p for p in self.projects if p.scm == "github" and p.repo_id == repo_id),
+            None,
+        )
 
     def by_path(self, path_with_namespace: str | None) -> Project | None:
         if not path_with_namespace:
             return None
         return next(
-            (p for p in self.projects if p.path_with_namespace == path_with_namespace), None
+            (
+                p
+                for p in self.projects
+                if p.path_with_namespace == path_with_namespace or p.repo == path_with_namespace
+            ),
+            None,
         )
 
     def by_key(self, key: str | None) -> Project | None:
@@ -89,9 +133,22 @@ class ProjectRegistry(BaseModel):
             return None
         return next((p for p in self.projects if p.key == key), None)
 
-    def resolve(self, project_id: int | None, path_with_namespace: str | None) -> Project | None:
-        """Allowlist check: the project must match by id (preferred) or by path."""
-        return self.by_gitlab_id(project_id) or self.by_path(path_with_namespace)
+    def resolve(
+        self,
+        project_id: int | None,
+        path_with_namespace: str | None,
+        *,
+        scm: ScmKind | None = None,
+    ) -> Project | None:
+        """Allowlist check: match by scm+id (preferred) or by path/repo."""
+        if scm == "github":
+            return self.by_github_id(project_id) or self.by_path(path_with_namespace)
+        if scm == "gitlab":
+            return self.by_gitlab_id(project_id) or self.by_path(path_with_namespace)
+        # Legacy callers (no scm): try GitLab id first then path (includes github repo path).
+        return self.by_gitlab_id(project_id) or self.by_github_id(project_id) or self.by_path(
+            path_with_namespace
+        )
 
     # --------------------------------------------------------------- routing
     def route(self, project: Project, task_type: str, labels: list[str]) -> str:

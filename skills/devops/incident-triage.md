@@ -43,9 +43,10 @@ metadata:
 7. **Secret scan + commit** — `gitleaks protect --staged`; commit `ci: pin foo to 1.2.3 to fix docker-build (#pipeline <id>)`
 8. **ขออนุมัติ** — `human-approval-gate` `{action: push_work_branch_and_open_mr, branch: hotfix/ci-<id>, diff_stat, build_result}`
    timeout 30 นาที → `EXPIRED` ไม่มีการ push
-9. **เมื่อ approved** — push พร้อม push options `-o merge_request.create -o merge_request.target=<ref ที่พัง หรือ main ตาม rulebook>`
-   และติดตาม pipeline ใหม่; รายงาน
-   `✅ MR !<iid> พร้อมรีวิว · pipeline ใหม่ #<id> กำลังรัน` → task `DONE`
+9. **เมื่อ approved** — ทำตาม skill [`open-change-request`](../_shared/open-change-request.md)
+   ตาม `inputs.scm` (GitLab push options หรือ GitHub `gh pr create` / API; target = ref ที่พัง หรือ `main`)
+   แล้วติดตาม pipeline/Actions ใหม่; รายงาน
+   `✅ MR/PR <url> พร้อมรีวิว · CI ใหม่ #<id> กำลังรัน` → task `DONE`
 10. **HANDOFF block (บังคับ)** — ตาม `skills/_shared/README.md`:
     - ส่งต่อ dev → `to_agent: <default_worker>`, `reason: review`
     - รอ approval → `reason: awaiting_approval`

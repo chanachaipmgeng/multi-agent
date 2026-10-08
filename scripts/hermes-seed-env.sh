@@ -38,10 +38,20 @@ write_env() {
   echo "wrote $dest"
 }
 
+# Optional GitHub token pairs (same role names as GitLab). Empty files are skipped.
+_gh_pair() {
+  local role="$1" file="$2"
+  if [ -s "secrets/$file" ]; then
+    printf '%s' "$role=$file"
+  fi
+}
+
 write_env coordinator \
   TELEGRAM_BOT_TOKEN=telegram_token \
   OPENROUTER_API_KEY=llm_key_coordinator \
-  GITLAB_TOKEN=gitlab_token_readonly
+  GITLAB_TOKEN=gitlab_token_readonly \
+  $(_gh_pair GITHUB_TOKEN github_token_readonly) \
+  $(_gh_pair GH_TOKEN github_token_readonly)
 
 # Dashboard basic auth (DECISION-18 / Hermes 0.21.5 HERMES_DASHBOARD_BASIC_AUTH_*).
 # Env wins over config.yaml; plaintext password is hashed in-memory by Hermes.
@@ -64,24 +74,34 @@ fi
 
 write_env dev-frontend \
   OPENROUTER_API_KEY=llm_key_dev_frontend \
-  GITLAB_TOKEN=gitlab_token_frontend
+  GITLAB_TOKEN=gitlab_token_frontend \
+  $(_gh_pair GITHUB_TOKEN github_token_frontend) \
+  $(_gh_pair GH_TOKEN github_token_frontend)
 
 write_env dev-backend \
   OPENROUTER_API_KEY=llm_key_dev_backend \
-  GITLAB_TOKEN=gitlab_token_backend
+  GITLAB_TOKEN=gitlab_token_backend \
+  $(_gh_pair GITHUB_TOKEN github_token_backend) \
+  $(_gh_pair GH_TOKEN github_token_backend)
 
 write_env reviewer \
   OPENROUTER_API_KEY=llm_key_reviewer \
-  GITLAB_TOKEN=gitlab_token_readonly
+  GITLAB_TOKEN=gitlab_token_readonly \
+  $(_gh_pair GITHUB_TOKEN github_token_readonly) \
+  $(_gh_pair GH_TOKEN github_token_readonly)
   # SOCRATICODE_API_KEY not required — DECISION-6 local AGPL (MCP uses Ollama+Qdrant)
 
 write_env devops \
   OPENROUTER_API_KEY=llm_key_devops \
-  GITLAB_TOKEN=gitlab_token_ci
+  GITLAB_TOKEN=gitlab_token_ci \
+  $(_gh_pair GITHUB_TOKEN github_token_ci) \
+  $(_gh_pair GH_TOKEN github_token_ci)
 
 write_env qa \
   OPENROUTER_API_KEY=llm_key_qa \
-  GITLAB_TOKEN=gitlab_token_qa
+  GITLAB_TOKEN=gitlab_token_qa \
+  $(_gh_pair GITHUB_TOKEN github_token_qa) \
+  $(_gh_pair GH_TOKEN github_token_qa)
 
 # Shared non-secret defaults
 for agent in coordinator dev-frontend dev-backend reviewer devops qa; do

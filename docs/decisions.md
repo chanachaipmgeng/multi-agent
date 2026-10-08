@@ -83,6 +83,18 @@ Obsolete assumption: early drafts treated DECISION-6 as “blocked until SECRET_
 | Session secret | `secrets/dashboard_session_secret` or fall back to `hermes_api_key` |
 | Cloudflare Access | Still planned for Phase 4 (DECISION-5); basic auth is the local/LAN gate |
 
+## DECISION-4 — SCM host (implementation note)
+
+| Item | Decision |
+|---|---|
+| Default | **GitLab.com (SaaS)** — `POST /webhook/gitlab`, `X-Gitlab-Token`, `scm: gitlab` in `projects.yaml` |
+| GitHub | Supported alongside GitLab: `POST /webhook/github`, HMAC `X-Hub-Signature-256`, `scm: github` + `repo` / `repo_id` |
+| Enrichment | `queue-adapter` `ScmClient` → `GitLabClient` \| `GitHubClient` (same prompt keys: `job_trace` / `job_traces`) |
+| Open MR/PR | Skill `open-change-request`; HITL action stays `push_work_branch_and_open_mr` |
+| Not in scope | Bitbucket / Gitea / Azure DevOps; auto-register GitHub webhooks; Cloudflare WAF rule for `/webhook/github` |
+
+Revisit Bitbucket/Gitea only if a pilot repo requires them.
+
 ## Org-blocked decisions (fill `config/org.yaml`)
 
 Do **not** invent values. Field map and unlock order: [`docs/org-unblock.md`](org-unblock.md).
@@ -103,3 +115,16 @@ Do **not** invent values. Field map and unlock order: [`docs/org-unblock.md`](or
 | Tooling | `make backup` / `make restore-drill BACKUP=…` / `make restore BACKUP=…` |
 | Remote | Optional `RESTIC_REPOSITORY` after local snapshot |
 | Drill | Temp Postgres restore; compare `task_count` to `manifest.json` |
+
+## DECISION-20 — Operator Console (first-party SPA)
+
+| Item | Decision |
+|---|---|
+| Scope | Thin console: Tasks, Approvals inbox, Control (pause/safe-mode), Projects (read-only), deep-links |
+| Client of | Gateway `/internal/*` only — does not replace Telegram as primary HITL (DECISION-17) |
+| Auth (local) | Shared `HERMES_API_KEY` bearer + `X-EMAW-User-Id` mapped from operator session / RBAC user picker |
+| Auth (prod) | Cloudflare Access on console hostname when DECISION-5 ready; Access identity → user id mapping |
+| Bind | `127.0.0.1` only in compose (profile `console`) |
+| Not in v1 | Meetings, knowledge graph, deploy wizard, YAML CRUD, MinIO browser |
+
+Roadmap C (after B stable): C1 deploy center → C2 review board → C3 meetings ops ritual → C4 knowledge graph (read-only). See [`docs/operator-console.md`](operator-console.md).

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import hmac
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -20,6 +22,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 PROJECTS_FILE = REPO_ROOT / "config" / "projects.yaml"
 
 WEBHOOK_SECRET = "test-webhook-secret-not-real"
+GITHUB_WEBHOOK_SECRET = "test-github-webhook-secret-not-real"
 
 
 def load_fixture(name: str) -> dict[str, Any]:
@@ -42,6 +45,21 @@ def job_payload() -> dict[str, Any]:
 
 
 @pytest.fixture
+def github_issues_payload() -> dict[str, Any]:
+    return copy.deepcopy(load_fixture("github_issues.json"))
+
+
+@pytest.fixture
+def github_workflow_run_payload() -> dict[str, Any]:
+    return copy.deepcopy(load_fixture("github_workflow_run.json"))
+
+
+@pytest.fixture
+def github_workflow_job_payload() -> dict[str, Any]:
+    return copy.deepcopy(load_fixture("github_workflow_job.json"))
+
+
+@pytest.fixture
 def registry() -> ProjectRegistry:
     return ProjectRegistry.from_yaml(PROJECTS_FILE)
 
@@ -50,6 +68,7 @@ def registry() -> ProjectRegistry:
 def settings() -> Settings:
     return Settings(
         GITLAB_WEBHOOK_SECRET=WEBHOOK_SECRET,
+        GITHUB_WEBHOOK_SECRET=GITHUB_WEBHOOK_SECRET,
         PROJECTS_FILE=str(PROJECTS_FILE),
         REDIS_URL="redis://unused:6379/0",
         IDEMPOTENCY_TTL_SECONDS=60,
@@ -96,4 +115,28 @@ def gitlab_headers(
         headers["X-Gitlab-Token"] = token
     if event_uuid is not None:
         headers["X-Gitlab-Event-UUID"] = event_uuid
+    return headers
+
+
+def github_sign(body: bytes, secret: str = GITHUB_WEBHOOK_SECRET) -> str:
+    digest = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+    return f"sha256={digest}"
+
+
+def github_headers(
+    event: str = "issues",
+    *,
+    body: bytes | None = None,
+    secret: str = GITHUB_WEBHOOK_SECRET,
+    signature: str | None = None,
+    delivery: str | None = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+    content_type: str = "application/json",
+) -> dict[str, str]:
+    headers = {"Content-Type": content_type, "X-GitHub-Event": event}
+    if delivery is not None:
+        headers["X-GitHub-Delivery"] = delivery
+    if signature is not None:
+        headers["X-Hub-Signature-256"] = signature
+    elif body is not None:
+        headers["X-Hub-Signature-256"] = github_sign(body, secret)
     return headers

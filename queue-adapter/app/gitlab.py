@@ -57,6 +57,9 @@ class GitLabClient:
         if not self.enabled:
             return {}
         source = task.get("source") or {}
+        kind = source.get("kind") or ""
+        if kind and not kind.startswith("gitlab"):
+            return {}
         project_id = source.get("gitlab_project_id")
         if not project_id:
             return {}

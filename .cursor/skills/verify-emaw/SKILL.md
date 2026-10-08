@@ -1,11 +1,11 @@
 ---
 name: verify-emaw
-description: Drive the EMAW platform (webhook-gateway, queue adapters, Hermes agents, observability) the way an operator would — HTTP + make smoke checks. Use when proving a change to compose, gateway, adapters, metrics, or Grafana; or when /poteto-mode needs a scripted green/red check.
+description: Drive the EMAW platform (webhook-gateway, queue adapters, Hermes agents, observability, Operator Console) the way an operator would — HTTP + make smoke checks. Use when proving a change to compose, gateway, adapters, metrics, Grafana, or console; or when /poteto-mode needs a scripted green/red check.
 ---
 
 # Verify EMAW (operator surface)
 
-Primary surface: **HTTP services on loopback** + **Makefile smoke**. Secondary: Grafana UI (browser optional). This is not a single-page app — proofs are curl/make exit codes and JSON bodies, plus optional Grafana screenshot.
+Primary surface: **HTTP services on loopback** + **Makefile smoke**. Secondary: Grafana UI and Operator Console (`make up-console` → `:8088`). Core proofs are curl/make exit codes and JSON bodies; console is optional HTTP reachability plus `/internal/*` clients.
 
 Never drive a stack you did not start for this run when isolation matters. The default compose project is shared on this host; prefer **doctor** before mutating, and use pause/resume only through documented internal API with a recorded RUN_ID.
 
@@ -19,6 +19,9 @@ make up-local-free
 
 # Observability profile (Grafana/Prometheus/Alertmanager)
 make up-observability
+
+# Optional Operator Console SPA (DECISION-20)
+make up-console
 ```
 
 Ready when:
@@ -26,6 +29,7 @@ Ready when:
 - `curl -fsS http://127.0.0.1:8700/healthz` returns JSON with ok status
 - `scripts/phase3-check.sh` prints `phase3-check: PASSED` (agents path)
 - `curl -fsS http://127.0.0.1:9090/-/healthy` and `http://127.0.0.1:9093/-/healthy` return OK (observability)
+- Optional: `curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8088/` returns `200`
 
 Teardown only what this RUN started. Prefer:
 
@@ -48,7 +52,7 @@ Helper:
 
 ```bash
 bash .cursor/skills/verify-emaw/bin/verify-emaw.sh drive <feature-id>
-# feature-id: gateway-health | phase3-smoke | observability | webhook-enqueue | pause-control
+# feature-id: gateway-health | phase3-smoke | observability | webhook-enqueue | pause-control | operator-console
 ```
 
 Or follow the matching file under `features/`. Prefer the helper — it writes evidence under `evidence/<RUN_ID>/`.
@@ -61,7 +65,7 @@ Location: `.cursor/skills/verify-emaw/evidence/<RUN_ID>/` (gitignored).
 
 Proof standards:
 
-- Exercise the real operator path (`/healthz`, `/metrics`, `make phase3-check`, `/webhook/gitlab`, `/internal/control/*`).
+- Exercise the real operator path (`/healthz`, `/metrics`, `make phase3-check`, `/webhook/gitlab` or `/webhook/github`, `/internal/control/*`, `/internal/projects`).
 - Capture **command + stdout + exit code** (and HTTP body for API calls).
 - For mutations (webhook enqueue, pause): capture a **second read** (task list / redis key / metrics) showing the effect.
 - Do not treat `dry-run` adapters as success for Hermes live dispatch unless the feature file says so.

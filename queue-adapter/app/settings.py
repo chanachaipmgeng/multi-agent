@@ -89,10 +89,13 @@ class Settings(BaseSettings):
     # Phase 1–2 compat: one Hermes instance. Phase 3 workers use ROLE instead.
     single_agent_name: str = Field(default="hermes-single", alias="SINGLE_AGENT_NAME")
 
-    # --- enrichment (GitLab read_api) -----------------------------------------
+    # --- enrichment (GitLab / GitHub) -----------------------------------------
     gitlab_base_url: str = Field(default="https://gitlab.com", alias="GITLAB_BASE_URL")
     gitlab_token: str | None = Field(default=None, alias="GITLAB_TOKEN")
     gitlab_token_file: str | None = Field(default=None, alias="GITLAB_TOKEN_FILE")
+    github_base_url: str = Field(default="https://api.github.com", alias="GITHUB_BASE_URL")
+    github_token: str | None = Field(default=None, alias="GITHUB_TOKEN")
+    github_token_file: str | None = Field(default=None, alias="GITHUB_TOKEN_FILE")
     trace_max_bytes: int = Field(default=65_536, alias="TRACE_MAX_BYTES")
 
     # --- optional Telegram notifications --------------------------------------
@@ -103,6 +106,8 @@ class Settings(BaseSettings):
     def _resolve(self) -> Settings:
         if not self.gitlab_token:
             self.gitlab_token = _read_secret_file(self.gitlab_token_file)
+        if not self.github_token:
+            self.github_token = _read_secret_file(self.github_token_file)
         if not self.minio_secret_key:
             self.minio_secret_key = _read_secret_file(self.minio_secret_key_file)
         if self.database_url and "${PG_PASSWORD}" in self.database_url:

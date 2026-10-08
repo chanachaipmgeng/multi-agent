@@ -1,0 +1,23 @@
+{
+  "action": "completed",
+  "workflow_run": {
+    "id": 77001,
+    "name": "CI",
+    "head_branch": "main",
+    "head_sha": "abc123def456",
+    "status": "completed",
+    "conclusion": "failure",
+    "html_url": "https://github.com/acme/sandbox-github/actions/runs/77001"
+  },
+  "repository": {
+    "id": 88888,
+    "name": "sandbox-github",
+    "full_name": "acme/sandbox-github",
+    "html_url": "https://github.com/acme/sandbox-github",
+    "default_branch": "main"
+  },
+  "sender": {
+    "id": 1001,
+    "login": "github-actions[bot]"
+  }
+}

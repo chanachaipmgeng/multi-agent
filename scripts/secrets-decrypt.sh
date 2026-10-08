@@ -40,9 +40,10 @@ while IFS= read -r line; do
 done <<< "$SOURCE"
 
 # compose declares every secret file; create empty placeholders for the ones not set yet
-for name in gitlab_webhook_secret pg_password tunnel_token telegram_token socraticode_key \
+for name in gitlab_webhook_secret github_webhook_secret pg_password tunnel_token telegram_token socraticode_key \
             llm_key_coordinator llm_key_dev_frontend llm_key_dev_backend llm_key_reviewer llm_key_devops llm_key_qa \
             gitlab_token_readonly gitlab_token_frontend gitlab_token_backend gitlab_token_ci gitlab_token_qa \
+            github_token_readonly github_token_frontend github_token_backend github_token_ci github_token_qa \
             hermes_api_key minio_agent_secret minio_root_password \
             dashboard_password dashboard_session_secret; do
   [ -f "secrets/$name" ] || { : > "secrets/$name"; chmod 600 "secrets/$name"; }

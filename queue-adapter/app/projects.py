@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 KNOWN_WORKERS: frozenset[str] = frozenset(
     {"coordinator", "dev-frontend", "dev-backend", "reviewer", "devops", "qa"}
@@ -14,11 +14,16 @@ KNOWN_WORKERS: frozenset[str] = frozenset(
 
 DEV_WORKERS: frozenset[str] = frozenset({"dev-frontend", "dev-backend"})
 
+ScmKind = Literal["gitlab", "github"]
+
 
 class Project(BaseModel):
     key: str
-    gitlab_project_id: int
-    path_with_namespace: str
+    scm: ScmKind = "gitlab"
+    gitlab_project_id: int | None = None
+    path_with_namespace: str = ""
+    repo: str | None = None
+    repo_id: int | None = None
     workspace_path: str
     default_worker: str
     allowed_workers: list[str] = Field(default_factory=list)
@@ -28,6 +33,24 @@ class Project(BaseModel):
     auto_push_branches: list[str] = Field(default_factory=list)
     data_classification: str = "internal"
     llm_backend: str = "cloud"
+
+    @model_validator(mode="after")
+    def _require_scm_ids(self) -> Project:
+        if self.scm == "gitlab":
+            if self.gitlab_project_id is None and not self.path_with_namespace:
+                raise ValueError(
+                    f"project {self.key!r} (scm=gitlab) needs gitlab_project_id or path_with_namespace"
+                )
+        elif self.scm == "github":
+            if self.repo_id is None and not (self.repo or self.path_with_namespace):
+                raise ValueError(
+                    f"project {self.key!r} (scm=github) needs repo_id or repo/path_with_namespace"
+                )
+            if not self.repo and self.path_with_namespace:
+                self.repo = self.path_with_namespace
+            if not self.path_with_namespace and self.repo:
+                self.path_with_namespace = self.repo
+        return self
 
 
 class RoutingRules(BaseModel):

@@ -21,7 +21,6 @@ from .artifacts import ArtifactStore, NullArtifactStore
 from .breaker import CircuitBreaker
 from .control import ControlPlane
 from .dispatch import Dispatcher, dumps
-from .gitlab import GitLabClient
 from .handoff import parse_handoff
 from .notify import (
     TelegramNotifier,
@@ -30,6 +29,7 @@ from .notify import (
     task_received_text,
 )
 from .prompt import build_prompt
+from .scm import ScmClient
 from .settings import Settings
 from .store import StateStore
 
@@ -50,8 +50,10 @@ class Consumer:
         redis: Redis,
         store: StateStore,
         dispatcher: Dispatcher,
-        gitlab: GitLabClient,
         notifier: TelegramNotifier,
+        scm: ScmClient | None = None,
+        # Back-compat alias used by older tests / callers.
+        gitlab: ScmClient | None = None,
         control: ControlPlane | None = None,
         breaker: CircuitBreaker | None = None,
         artifacts: ArtifactStore | NullArtifactStore | None = None,
@@ -60,14 +62,17 @@ class Consumer:
         self.redis = redis
         self.store = store
         self.dispatcher = dispatcher
-        self.gitlab = gitlab
+        chosen = scm if scm is not None else gitlab
+        if chosen is None:
+            raise TypeError("Consumer requires scm= (or legacy gitlab=)")
+        self.scm = chosen
+        self.gitlab = chosen  # alias for older call sites / tests
         self.notifier = notifier
         self.control = control
         self.breaker = breaker
         self.artifacts = artifacts or NullArtifactStore()
         self.processed = 0
         self.agent_name = settings.role or settings.single_agent_name
-
     # ----------------------------------------------------------------- setup
     async def ensure_group(self) -> None:
         try:
@@ -171,7 +176,7 @@ class Consumer:
 
         enrichment: dict[str, Any] = {}
         try:
-            enrichment = await self.gitlab.enrich(task)
+            enrichment = await self.scm.enrich(task)
         except Exception as exc:  # noqa: BLE001 — enrichment is best effort
             log.warning("enrichment failed for %s: %s", task_id, exc)
             await self.store.audit(

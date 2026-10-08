@@ -200,6 +200,75 @@ async def test_approval_flow(client) -> None:
     assert "approval_latency_seconds_sum" in scraped
 
 
+async def test_console_apis_approvals_projects_audit_control(client) -> None:
+    ac, store, redis = client
+    task = Task(
+        task_id="t-console-1",
+        trace_id="trace-console",
+        type="feature",
+        project="frontend-app",
+        source=TaskSource(
+            kind="gitlab_webhook",
+            url="https://gitlab.example.com/acme/frontend-app/-/issues/1",
+        ),
+        requester=TaskRequester(channel="gitlab", user_id=1),
+        assigned_to="dev-frontend",
+        skill="dev-flow",
+        inputs={"branch": "fix/issue-1", "repo": "acme/frontend-app"},
+        constraints=TaskConstraints(token_budget=1, self_heal_limit=0, deadline_min=1),
+        state=TaskState.IN_PROGRESS,
+        created_at=datetime.now(UTC),
+    )
+    await store.create_task(task)
+
+    detail = await ac.get("/internal/tasks/t-console-1", headers=_headers(111))
+    assert detail.status_code == 200
+    body = detail.json()
+    assert body["inputs"]["branch"] == "fix/issue-1"
+    assert any("gitlab.example.com" in u for u in body.get("links", []))
+
+    r = await ac.post(
+        "/internal/approvals",
+        headers=_headers(),
+        json={
+            "task_id": "t-console-1",
+            "action": "push_work_branch_and_open_mr",
+            "payload": {"branch": "fix/issue-1", "token": "secret-value"},
+            "required_role": "developer",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["payload_summary"]["token"] == "[REDACTED]"
+    nonce = r.json()["nonce"]
+
+    inbox = await ac.get("/internal/approvals?status=pending", headers=_headers(111))
+    assert inbox.status_code == 200
+    assert inbox.json()["count"] >= 1
+
+    one = await ac.get(f"/internal/approvals/{nonce}", headers=_headers(111))
+    assert one.status_code == 200
+    assert one.json()["action"] == "push_work_branch_and_open_mr"
+
+    await ac.post("/internal/control/pause", headers=_headers(), json={"agent": "devops"})
+    status = await ac.get("/internal/control/status", headers=_headers(111))
+    assert status.status_code == 200
+    assert "devops" in status.json()["paused_agents"]
+
+    projects = await ac.get("/internal/projects", headers=_headers(111))
+    assert projects.status_code == 200
+    assert any(p["key"] == "frontend-app" for p in projects.json()["projects"])
+
+    audit = await ac.get(
+        "/internal/audit", headers=_headers(111), params={"task_id": "t-console-1"}
+    )
+    assert audit.status_code == 200
+    assert audit.json()["count"] >= 1
+
+    users = await ac.get("/internal/rbac/users", headers=_headers(111))
+    assert users.status_code == 200
+    assert users.json()["count"] >= 1
+
+
 async def test_metrics_task_state_gauge(client) -> None:
     ac, store, _redis = client
     task = Task(

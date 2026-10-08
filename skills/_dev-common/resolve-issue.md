@@ -33,15 +33,14 @@ metadata:
 7. **Self-review** — รัน skill `review-code`; ข้อ 🛑 ต้องแก้ให้หมดก่อนไปต่อ
 8. **Deep review (Phase 2+)** — ส่ง handoff ไป `reviewer` (SocratiCode) ถ้าโปรเจกต์เปิดใช้; ถ้า reviewer ส่ง patch กลับมา ให้ apply แล้วรัน test ซ้ำ (นับรวมใน self-heal)
 9. **Secret scan + commit** — `gitleaks protect --staged --redact`; commit Conventional Commits อ้าง issue เช่น `fix: prevent dashboard overflow on mobile (#89)`
-10. **ขออนุมัติ push + MR** — ส่งคำขอ `human-approval-gate` ไป coordinator:
+10. **ขออนุมัติ push + MR/PR** — ส่งคำขอ `human-approval-gate` ไป coordinator:
     `{action: push_work_branch_and_open_mr, branch, commits, diff_stat, test_summary, mr_title, mr_description}`
-    MR description ต้องมี: สรุปสาเหตุ/วิธีแก้, ผล test, สรุป review, `trace_id: <trace_id>`, และบรรทัด `Closes #<iid>`
+    Description ต้องมี: สรุปสาเหตุ/วิธีแก้, ผล test, สรุป review, `trace_id: <trace_id>`, และบรรทัด `Closes #<iid>` (GitLab) หรือ `Fixes #<iid>` (GitHub)
     **รอ** — `rejected`/`expired` → จบที่ commit ใน worktree, รายงานสถานะ ไม่มีการ push
-11. **เมื่อ approved** — push พร้อมเปิด MR ด้วย GitLab push options (ใช้ได้ด้วย scope `write_repository` ไม่ต้องมี `api`):
-    `git push -u origin <branch> -o merge_request.create -o merge_request.target=main -o merge_request.remove_source_branch`
-    `-o merge_request.title="<mr_title>" -o merge_request.description="<mr_description>"` แล้วอ่าน URL ของ MR จาก output ของ push
-12. **แจ้งผล** — `✅ Issue #<iid> เสร็จ · MR !<iid> <url> · test <n> passed · trace <trace_id>` → task `DONE`
-    (GitLab จะปิด Issue เองเมื่อ MR ถูก merge โดยมนุษย์)
+11. **เมื่อ approved** — ทำตาม skill [`open-change-request`](../_shared/open-change-request.md)
+    ตาม `inputs.scm` (`gitlab` = push options MR; `github` = `git push` แล้ว `gh pr create` / API)
+12. **แจ้งผล** — `✅ Issue #<iid> เสร็จ · MR/PR <url> · test <n> passed · trace <trace_id>` → task `DONE`
+    (host จะปิด Issue เองเมื่อ MR/PR ถูก merge โดยมนุษย์)
 13. **HANDOFF block (บังคับ)** — ตาม `skills/_shared/README.md`:
     - หลัง commit ก่อน push → `to_agent: reviewer`, `reason: review`
     - หลัง MR เปิดแล้ว / ไม่ต้องรีวิวเพิ่ม → `to_agent:` (ว่าง), `reason: done`

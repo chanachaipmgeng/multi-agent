@@ -2,9 +2,9 @@
 
 Platform code และ config ของ **Enterprise Multi-Agent Workspace** — ระบบ Multi-Agent บน
 [Hermes Agent](https://github.com/NousResearch/hermes-agent) สำหรับงานพัฒนาซอฟต์แวร์อัตโนมัติและ
-Incident Response: มนุษย์สั่งงานผ่าน Telegram, GitLab ยิง webhook ผ่าน Cloudflare Tunnel เข้า
-Webhook Gateway, Coordinator มอบหมายงานให้ worker agents ที่ทำงานใน Docker sandbox และทุก action ที่มี
-ผลกระทบสูงต้องผ่าน Human-in-the-Loop
+Incident Response: มนุษย์สั่งงานผ่าน Telegram (และ Operator Console), GitLab/GitHub ยิง webhook ผ่าน
+Cloudflare Tunnel เข้า Webhook Gateway, Coordinator มอบหมายงานให้ worker agents ที่ทำงานใน Docker
+sandbox และทุก action ที่มีผลกระทบสูงต้องผ่าน Human-in-the-Loop
 
 สถานะ: **Phase 3 closed** · **Phase 4** D4.1 observability + D4.2 redaction/gitleaks + D4.5/D4.6 ✅ · org-blocked: DECISION-2/5/8/11
 Hermes Agent **v0.21.5** · decisions: [`docs/decisions.md`](docs/decisions.md) · design: [`docs/design/system-design-v1.1.md`](docs/design/system-design-v1.1.md) ([errata](docs/design/errata.md))
@@ -13,14 +13,15 @@ Exit criteria: [`phase0`](docs/phase0-exit-criteria.md) · [`phase1`](docs/phase
 ## Architecture (ย่อ)
 
 ```text
-Telegram ──▶ coordinator ──▶ POST /internal/tasks ──▶ stream:tasks ──▶ router ──▶ stream:<role>
-GitLab ─▶ Tunnel ─▶ Webhook Gateway ─────────────────────────────────────┘         │
-                                          verify · dedupe · normalize · RBAC         ▼
-                                                                    adapter-<role> → Hermes :8642
-                                                                         │
-                                                                    stream:results → router → handoffs / state
-                                                                         ▼
-                                                         PostgreSQL + MinIO artifacts + audit
+Telegram / Operator Console ──▶ coordinator|/internal/* ──▶ stream:tasks ──▶ router ──▶ stream:<role>
+GitLab|GitHub ─▶ Tunnel ─▶ Webhook Gateway ──────────────────────────────────┘         │
+                              verify · dedupe · normalize · RBAC · scm field              ▼
+                                                                         adapter-<role> → Hermes :8642
+                                                                         ScmClient (GitLab|GitHub enrich)
+                                                                              │
+                                                                         stream:results → handoffs / state
+                                                                              ▼
+                                                              PostgreSQL + MinIO + audit (+ Grafana)
 ```
 
 Phase 3 (DECISION-16): `router` fans out; one `adapter-<role>` per worker; coordinator skills handle Telegram tags / HITL / kill switch.
@@ -32,22 +33,23 @@ Everything is auditable · Grow in phases
 
 | Path | What |
 |---|---|
-| `docker-compose.yml` | platform + `router` + 5 role adapters + MinIO; profiles `agents`, `ingress`, `onprem-llm`, `socraticode`, `single` (legacy) |
+| `docker-compose.yml` | platform + `router` + 5 role adapters + MinIO; profiles `agents`, `ingress`, `onprem-llm`, `socraticode`, `console`, `single` (legacy) |
 | `docker-compose.local-free.yml` | all 6 agents → `inference-ollama` (`make up-local-free`, DECISION-15) |
 | `docker-compose.prod.yml` | Linux VM override (`make up-prod`) |
-| `webhook-gateway/` | GitLab webhook + `/internal/*` control plane (tasks, approvals, pause/safe-mode) + RBAC |
-| `queue-adapter/` | `MODE=router\|worker` — fan-out, HANDOFF parse, breaker, MinIO upload, `/metrics` |
+| `webhook-gateway/` | GitLab + GitHub webhooks + `/internal/*` control plane (tasks, approvals, pause/safe-mode, projects, audit) + RBAC |
+| `queue-adapter/` | `MODE=router\|worker` — fan-out, HANDOFF parse, `ScmClient` enrich, breaker, MinIO upload, `/metrics` |
+| `operator-console/` | Operator Console SPA (DECISION-20) — `make up-console` → `:8088` |
 | `db/migrations/` | Task Store schema: `tasks`, `handoffs`, `approvals`, `audit_events` |
-| `config/projects.yaml` | project allowlist + routing |
+| `config/projects.yaml` | project allowlist + routing (`scm: gitlab\|github`) |
 | `config/policies/platform-policy.yaml` | never push `main`, HITL matrix, limits |
 | `config/rbac.example.yaml` | copy to `config/rbac.yaml` (gitignored) — enforced on `/internal/*` |
 | `hermes-data/<agent>/` | 6 profiles + `config.local-free.yaml` |
-| `skills/` | Phase 0–3 procedures (incl. `route-task`, `fix-pipeline`, `write-e2e`, …) |
+| `skills/` | Phase 0–3 procedures (incl. `open-change-request`, `route-task`, `fix-pipeline`, …) |
 | `workspace/` | project clones (gitignored) + `_templates/` (`project-standards.md`, `.agentignore`, `.socraticodeignore`) + `.worktrees/` |
 | `examples/sandbox-smoke/` | minimal pilot project whose `./test.sh` returns exit 0/1 correctly |
 | `cloudflared/` | Named Tunnel config template + runbook (Phase 1, blocked on domain) |
 | `scripts/`, `Makefile` | prereq check, SOPS secrets, migrate, Hermes configure, onboard repo, skill sync, test webhook, Phase 0 verifier, **tunnel setup/status, GitLab webhook register, token scope check** |
-| `docs/` | exit criteria, `secrets.md`, `environments.md`, `org-unblock.md`, `skill-acceptance.md`, `runbooks/` (E14 index) |
+| `docs/` | exit criteria, `operator-console.md`, `secrets.md`, `environments.md`, `org-unblock.md`, `skill-acceptance.md`, `runbooks/` (E14 index) |
 | `.env.example`, `.sops.yaml`, `.gitleaks.toml`, `.agentignore`, `.pre-commit-config.yaml` | secrets & hygiene |
 
 ## Quick start (รันในเครื่อง / Run locally)
@@ -92,14 +94,18 @@ Hermes (Phase 0): ดู [`docs/local-dev.md`](docs/local-dev.md) §4 และ 
 
 ## Gateway contract
 
-`POST /webhook/gitlab` → `401` bad token · `403` project not in `projects.yaml` · `200 ignored`
-(event not allowed / pipeline success / issue closed) · `200 duplicate` (same event UUID within 24 h) ·
-`200 recorded` (issue without `agent-ready`) · `200 attached` (issue already has an active task) ·
-`200 queued` (Task envelope written to `tasks` + `XADD stream:tasks`).
+`POST /webhook/gitlab` (token) and `POST /webhook/github` (HMAC `X-Hub-Signature-256`; `503` if secret unset) →
+`401` bad auth · `403` project not in `projects.yaml` · `200 ignored` (event not allowed / success path /
+issue closed) · `200 duplicate` (same event UUID/delivery within 24 h) · `200 recorded` (issue without
+`agent-ready`) · `200 attached` (issue already has an active task) · `200 queued` (Task → `tasks` +
+`XADD stream:tasks`). GitHub allowlist: `issues`, `workflow_run`, `workflow_job`.
+
+Operator Console: `make up-console` → http://127.0.0.1:8088 (client of `/internal/*`; see
+[`docs/operator-console.md`](docs/operator-console.md)).
 
 Task envelope (design §4.3): `task_id`, `trace_id`, `type`, `project`, `source`, `requester`,
 `assigned_to`, `skill`, `inputs`, `constraints{token_budget,self_heal_limit,deadline_min}`,
-`handoffs`, `state`, `created_at`.
+`handoffs`, `state`, `created_at` (+ `scm` / `scm_context` when from GitHost).
 
 ## Decisions baked into this repo
 

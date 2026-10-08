@@ -1,0 +1,26 @@
+---
+description: EMAW dual SCM (GitLab/GitHub) and Operator Console conventions
+alwaysApply: true
+---
+
+# EMAW — SCM + Operator Console
+
+## SCM (DECISION-4)
+
+- Projects declare `scm: gitlab` (default) or `scm: github` in `config/projects.yaml`.
+- GitLab: `POST /webhook/gitlab` + `X-Gitlab-Token`; GitHub: `POST /webhook/github` + HMAC `X-Hub-Signature-256`.
+- Do not invent a second HITL action for PRs — keep `push_work_branch_and_open_mr`; agents follow skill `open-change-request` and branch on `inputs.scm`.
+- Adapters enrich via `ScmClient` (GitLabClient | GitHubClient). Prefer shared abstractions over duplicating host-specific paths.
+- Never log webhook secrets or PATs. GitHub webhook returns `503` when secret unset — that is intentional.
+
+## Operator Console (DECISION-20)
+
+- Thin SPA under `operator-console/` — client of gateway `/internal/*` only. Does **not** replace Telegram HITL or Grafana.
+- Run: `make up-console` → `http://127.0.0.1:8088` (compose profile `console`). Auth: `HERMES_API_KEY` + `X-EMAW-User-Id` from `config/rbac.yaml`.
+- Extend console by adding gateway internal APIs first, then thin UI. Roadmap C1–C4 needs a DECISION + exit criteria before coding (see `docs/operator-console.md`).
+- Design §2.4: console is an allowed operator surface, not a second control plane.
+
+## Docs / skills source of truth
+
+- Procedures live in `skills/` and promote via `make skills-sync` → `hermes-data/*/skills/emaw/`. Never edit hermes-data skills as the canonical source.
+- Operator proofs: `.cursor/skills/verify-emaw` (feature `operator-console`).

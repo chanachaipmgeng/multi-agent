@@ -32,9 +32,10 @@ metadata:
 8. **Commit** — `git add -A` เฉพาะไฟล์ใน scope → commit แบบ Conventional Commits บรรทัดเดียว
    (`feat:`, `fix:`, `refactor:`, `test:`) อ้าง issue ถ้ามี (`fix: … (#89)`)
 9. **สรุปผล** — รายงานกลับ coordinator: branch, commit sha, diff stat, ผล test (จำนวนผ่าน/เวลา), token ที่ใช้
-10. **Push?** — **ห้าม push เอง** ถ้าต้องการ push/เปิด MR ให้ส่งคำขอ `human-approval-gate` ไปที่ coordinator
+10. **Push?** — **ห้าม push เอง** ถ้าต้องการ push/เปิด MR/PR ให้ส่งคำขอ `human-approval-gate` ไปที่ coordinator
     พร้อม payload: `{action: push_work_branch_and_open_mr, branch, commits, diff_stat, test_summary}`
     แล้ว **รอ** — ไม่ทำอะไรต่อจนกว่าจะได้ `approved`; `rejected` / `expired` = จบงานที่ commit
+    เมื่อ `approved` → skill [`open-change-request`](../_shared/open-change-request.md) ตาม `inputs.scm`
 11. **HANDOFF block (บังคับ)** — ปิดท้ายด้วย YAML ตาม `skills/_shared/README.md`:
     - หลัง commit สำเร็จ → `to_agent: reviewer`, `reason: review`
     - `NEEDS_HUMAN` → `to_agent:` (ว่าง), `reason: needs_human`

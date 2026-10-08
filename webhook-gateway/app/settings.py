@@ -1,7 +1,8 @@
 """Runtime configuration for the webhook gateway.
 
 All values come from environment variables (or Docker secrets via *_FILE variants).
-No secret has a default value: the gateway refuses to start without a webhook secret.
+``GITLAB_WEBHOOK_SECRET`` is required at boot; ``GITHUB_WEBHOOK_SECRET`` is optional
+(``/webhook/github`` returns 503 when unset).
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ALLOWED_GITLAB_EVENTS: frozenset[str] = frozenset({"Issue Hook", "Pipeline Hook", "Job Hook"})
+ALLOWED_GITHUB_EVENTS: frozenset[str] = frozenset({"issues", "workflow_run", "workflow_job"})
 
 
 def _read_secret_file(path: str | None) -> str | None:
@@ -35,7 +37,10 @@ class Settings(BaseSettings):
     # --- webhook security ---------------------------------------------------
     gitlab_webhook_secret: str | None = Field(default=None, alias="GITLAB_WEBHOOK_SECRET")
     gitlab_webhook_secret_file: str | None = Field(default=None, alias="GITLAB_WEBHOOK_SECRET_FILE")
+    github_webhook_secret: str | None = Field(default=None, alias="GITHUB_WEBHOOK_SECRET")
+    github_webhook_secret_file: str | None = Field(default=None, alias="GITHUB_WEBHOOK_SECRET_FILE")
     allowed_events: frozenset[str] = ALLOWED_GITLAB_EVENTS
+    allowed_github_events: frozenset[str] = ALLOWED_GITHUB_EVENTS
     max_body_bytes: int = Field(default=1_048_576, alias="MAX_BODY_BYTES")  # 1 MiB
 
     # --- idempotency / queue -----------------------------------------------
@@ -70,6 +75,12 @@ class Settings(BaseSettings):
                 "GITLAB_WEBHOOK_SECRET (or GITLAB_WEBHOOK_SECRET_FILE) is required; "
                 "the gateway never runs without a webhook secret"
             )
+        # GitHub secret is optional at boot: /webhook/github returns 503 when empty.
+        if not self.github_webhook_secret:
+            try:
+                self.github_webhook_secret = _read_secret_file(self.github_webhook_secret_file)
+            except FileNotFoundError:
+                self.github_webhook_secret = None
         if not self.hermes_api_key and self.hermes_api_key_file:
             try:
                 self.hermes_api_key = _read_secret_file(self.hermes_api_key_file)

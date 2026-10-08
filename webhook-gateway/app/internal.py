@@ -29,6 +29,7 @@ from .envelope import (
     new_trace_id,
 )
 from .rbac import RbacPolicy
+from .store import KNOWN_PAUSE_AGENTS, safe_payload_summary
 
 log = logging.getLogger("emaw.gateway.internal")
 
@@ -202,7 +203,7 @@ async def get_task(
     ok, reason = _rbac(request).authorize(user_id, "status-report")
     if not ok:
         raise HTTPException(403, detail=reason)
-    row = await request.app.state.store.get_task(task_id)
+    row = await request.app.state.store.get_task(task_id, detail=True)
     if row is None:
         raise HTTPException(404, detail="task not found")
     return row
@@ -230,6 +231,7 @@ async def request_approval(
     payload_hash = hashlib.sha256(
         json.dumps(body.payload, sort_keys=True, default=str).encode()
     ).hexdigest()
+    summary = safe_payload_summary(body.payload)
     timeout_at = datetime.now(UTC) + timedelta(minutes=body.timeout_min)
     await request.app.state.store.create_approval(
         task_id=body.task_id,
@@ -239,6 +241,7 @@ async def request_approval(
         requested_by=body.requested_by,
         required_role=body.required_role,
         timeout_at=timeout_at,
+        payload_summary=summary,
     )
     await request.app.state.store.set_state(body.task_id, "AWAITING_APPROVAL")
     await request.app.state.store.audit(
@@ -248,7 +251,50 @@ async def request_approval(
         task_id=body.task_id,
         attrs={"action": body.action, "nonce": nonce, "required_role": body.required_role},
     )
-    return {"nonce": nonce, "timeout_at": timeout_at.isoformat(), "payload_hash": payload_hash}
+    return {
+        "nonce": nonce,
+        "timeout_at": timeout_at.isoformat(),
+        "payload_hash": payload_hash,
+        "payload_summary": summary,
+    }
+
+
+@router.get("/approvals")
+async def list_approvals(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
+    status: str | None = "pending",
+    task_id: str | None = None,
+    limit: int = 50,
+) -> dict[str, Any]:
+    _require_auth(request, authorization)
+    user_id = _user_id(x_emaw_user_id)
+    ok, reason = _rbac(request).authorize(user_id, "status-report")
+    if not ok:
+        raise HTTPException(403, detail=reason)
+    rows = await request.app.state.store.list_approvals(
+        status=status, task_id=task_id, limit=min(limit, 200)
+    )
+    return {"approvals": rows, "count": len(rows)}
+
+
+@router.get("/approvals/{nonce}")
+async def get_approval(
+    nonce: str,
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
+) -> dict[str, Any]:
+    _require_auth(request, authorization)
+    user_id = _user_id(x_emaw_user_id)
+    ok, reason = _rbac(request).authorize(user_id, "status-report")
+    if not ok:
+        raise HTTPException(403, detail=reason)
+    row = await request.app.state.store.get_approval(nonce)
+    if row is None:
+        raise HTTPException(404, detail="unknown nonce")
+    return row
 
 
 @router.post("/approvals/{nonce}/decide")
@@ -268,6 +314,10 @@ async def decide_approval(
     if row.get("decision"):
         raise HTTPException(409, detail="already decided")
     timeout_at = row.get("timeout_at")
+    if isinstance(timeout_at, str):
+        timeout_at = datetime.fromisoformat(timeout_at)
+    if timeout_at and getattr(timeout_at, "tzinfo", None) is None:
+        timeout_at = timeout_at.replace(tzinfo=UTC)
     if timeout_at and datetime.now(UTC) > timeout_at:
         await store.decide_approval(nonce, decision="expired", decided_by=user_id)
         await store.set_state(row["task_id"], "EXPIRED")
@@ -415,7 +465,91 @@ async def control_status(
     _user_id(x_emaw_user_id)
     prefix = request.app.state.settings.control_prefix
     redis = request.app.state.redis
+    paused_agents: list[str] = []
+    for agent in KNOWN_PAUSE_AGENTS:
+        if await redis.get(f"{prefix}:pause:{agent}"):
+            paused_agents.append(agent)
     return {
         "safe_mode": bool(await redis.get(f"{prefix}:safe_mode")),
         "pause_all": bool(await redis.get(f"{prefix}:pause:all")),
+        "paused_agents": paused_agents,
     }
+
+
+@router.get("/projects")
+async def list_projects(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
+) -> dict[str, Any]:
+    _require_auth(request, authorization)
+    user_id = _user_id(x_emaw_user_id)
+    ok, reason = _rbac(request).authorize(user_id, "status-report")
+    if not ok:
+        raise HTTPException(403, detail=reason)
+    projects = request.app.state.projects
+    rows = []
+    for p in projects.projects:
+        rows.append(
+            {
+                "key": p.key,
+                "scm": getattr(p, "scm", "gitlab"),
+                "gitlab_project_id": p.gitlab_project_id,
+                "repo": getattr(p, "repo", None),
+                "repo_id": getattr(p, "repo_id", None),
+                "path_with_namespace": p.path_with_namespace,
+                "workspace_path": p.workspace_path,
+                "default_worker": p.default_worker,
+                "allowed_workers": p.allowed_workers,
+                "opt_in_label": p.opt_in_label,
+                "data_classification": p.data_classification,
+                "llm_backend": p.llm_backend,
+            }
+        )
+    return {"projects": rows, "count": len(rows)}
+
+
+@router.get("/audit")
+async def list_audit(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
+    task_id: str | None = None,
+    trace_id: str | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    _require_auth(request, authorization)
+    user_id = _user_id(x_emaw_user_id)
+    ok, reason = _rbac(request).authorize(user_id, "status-report")
+    if not ok:
+        raise HTTPException(403, detail=reason)
+    if not task_id and not trace_id:
+        raise HTTPException(400, detail="task_id or trace_id required")
+    rows = await request.app.state.store.list_audit(
+        task_id=task_id, trace_id=trace_id, limit=min(limit, 500)
+    )
+    return {"events": rows, "count": len(rows)}
+
+
+@router.get("/rbac/users")
+async def list_rbac_users(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
+) -> dict[str, Any]:
+    """Dev helper for the console user picker (ids + names + roles only)."""
+    _require_auth(request, authorization)
+    user_id = _user_id(x_emaw_user_id)
+    ok, reason = _rbac(request).authorize(user_id, "status-report")
+    if not ok:
+        raise HTTPException(403, detail=reason)
+    policy = _rbac(request)
+    users = [
+        {
+            "user_id": int(uid) if str(uid).isdigit() else uid,
+            "name": u.name,
+            "roles": list(u.roles),
+        }
+        for uid, u in policy.users.items()
+    ]
+    return {"users": users, "count": len(users)}

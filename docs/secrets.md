@@ -32,14 +32,17 @@ disk; the file-based variant is used because Hermes reads `token_file:` paths.
 | Secret file | Consumer | Scope | Rotate |
 |---|---|---|---|
 | `gitlab_webhook_secret` | webhook-gateway | GitLab webhook "Secret token" | 180 days |
+| `github_webhook_secret` | webhook-gateway | GitHub webhook HMAC (`X-Hub-Signature-256`); empty → `/webhook/github` returns `503` | 180 days |
 | `pg_password` | postgres, gateway, coordinator | DB user `emaw` | 180 days |
 | `tunnel_token` | cloudflared | one Named Tunnel | on suspicion |
 | `telegram_token` | coordinator **only** | bot | on suspicion |
 | `llm_key_<agent>` ×6 | that agent only | provider key, per-agent for cost + revocation | 90 days |
 | `gitlab_token_readonly` | coordinator, reviewer | Project Access Token `read_api` | 90 days |
 | `gitlab_token_frontend` / `_backend` / `_ci` / `_qa` | that worker only | PAT `read_api` + `write_repository`, one repo | 90 days |
+| `github_token_readonly` | coordinator, reviewer, adapters (`ScmClient`) | fine-grained / classic PAT read | 90 days |
+| `github_token_frontend` / `_backend` / `_ci` / `_qa` | that worker only | PAT for push + PR (`open-change-request`) | 90 days |
 | `socraticode_key` | reviewer | SocratiCode | 90 days |
-| `hermes_api_key` | adapters, gateway internal, Hermes API | Bearer | 90 days |
+| `hermes_api_key` | adapters, gateway internal, Operator Console, Hermes API | Bearer | 90 days |
 | `dashboard_password` | coordinator dashboard `:9119` | basic auth (DECISION-18) | 90 days |
 | `dashboard_session_secret` | coordinator dashboard sessions | HMAC (optional; falls back to `hermes_api_key`) | 90 days |
 | `minio_*` | MinIO | root / agent | 180 days |
@@ -53,5 +56,6 @@ old credential at the provider → record `secret.rotated` in the audit log.
 * `.gitignore` excludes `.env`, `.env.*` (except `.env.example`), `secrets/*`, `*.age`, `*.pem`, `*.key`.
 * `.gitleaks.toml` + pre-commit hook + CI job scan every commit (GitLab PAT, Telegram, tunnel token, age key patterns added).
 * `webhook-gateway` refuses to start without `GITLAB_WEBHOOK_SECRET(_FILE)`; it never logs the token.
+  GitHub secret is optional at boot; `/webhook/github` is `503` until `GITHUB_WEBHOOK_SECRET(_FILE)` is set.
 * Phase 3: Docker secrets per agent are already wired in compose (incl. `minio_agent_secret`).
   Phase 4 adds Vault/Infisical short-lived tokens (E7).

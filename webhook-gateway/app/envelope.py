@@ -60,11 +60,13 @@ DEFAULT_SKILL_FOR_TYPE: dict[str, str] = {
 
 
 class TaskSource(BaseModel):
-    kind: Literal["gitlab_webhook", "telegram", "manual"] = "gitlab_webhook"
+    kind: Literal["gitlab_webhook", "github_webhook", "telegram", "manual"] = "gitlab_webhook"
     event: str | None = None
     event_uuid: str | None = None
     gitlab_project_id: int | None = None
     path_with_namespace: str | None = None
+    repo: str | None = None  # owner/name (GitHub)
+    repo_id: int | None = None  # GitHub numeric repository id
     issue_iid: int | None = None
     pipeline_id: int | None = None
     job_id: int | None = None
@@ -72,7 +74,7 @@ class TaskSource(BaseModel):
 
 
 class TaskRequester(BaseModel):
-    channel: Literal["gitlab", "telegram", "manual"] = "gitlab"
+    channel: Literal["gitlab", "github", "telegram", "manual"] = "gitlab"
     user_id: int | None = None
     username: str | None = None
     role: str = "unknown"
@@ -156,15 +158,45 @@ def normalize(
     project: Project,
     registry: ProjectRegistry,
     now: datetime | None = None,
+    scm: Literal["gitlab", "github"] = "gitlab",
 ) -> NormalizeResult:
-    """Turn a verified GitLab payload into a Task envelope (or an explicit non-action)."""
+    """Turn a verified SCM payload into a Task envelope (or an explicit non-action)."""
     now = now or datetime.now(UTC)
+    if scm == "github":
+        return normalize_github(
+            event=event,
+            event_uuid=event_uuid,
+            payload=payload,
+            project=project,
+            registry=registry,
+            now=now,
+        )
     if event == "Issue Hook":
         return _normalize_issue(event, event_uuid, payload, project, registry, now)
     if event == "Pipeline Hook":
         return _normalize_pipeline(event, event_uuid, payload, project, registry, now)
     if event == "Job Hook":
         return _normalize_job(event, event_uuid, payload, project, registry, now)
+    return NormalizeResult(task=None, status="ignored", reason="event_not_supported")
+
+
+def normalize_github(
+    *,
+    event: str,
+    event_uuid: str,
+    payload: dict[str, Any],
+    project: Project,
+    registry: ProjectRegistry,
+    now: datetime | None = None,
+) -> NormalizeResult:
+    """Turn a verified GitHub webhook payload into a Task envelope."""
+    now = now or datetime.now(UTC)
+    if event == "issues":
+        return _normalize_github_issues(event, event_uuid, payload, project, registry, now)
+    if event == "workflow_run":
+        return _normalize_github_workflow_run(event, event_uuid, payload, project, registry, now)
+    if event == "workflow_job":
+        return _normalize_github_workflow_job(event, event_uuid, payload, project, registry, now)
     return NormalizeResult(task=None, status="ignored", reason="event_not_supported")
 
 
@@ -341,6 +373,209 @@ def _normalize_job(
             "branch": f"hotfix/ci-{payload.get('pipeline_id')}",
             "data_classification": project.data_classification,
             "llm_backend": project.llm_backend,
+        },
+        constraints=_constraints(worker),
+        state=TaskState.QUEUED,
+        created_at=now,
+    )
+    return NormalizeResult(task=task, status="queued")
+
+
+# ---------------------------------------------------------- GitHub normalize
+def _github_labels(payload: dict[str, Any]) -> list[str]:
+    issue = payload.get("issue") or {}
+    raw = issue.get("labels") or []
+    out: list[str] = []
+    for item in raw:
+        if isinstance(item, dict) and item.get("name"):
+            out.append(str(item["name"]))
+        elif isinstance(item, str):
+            out.append(item)
+    return out
+
+
+def _github_requester(payload: dict[str, Any]) -> TaskRequester:
+    user = payload.get("sender") or {}
+    return TaskRequester(
+        channel="github",
+        user_id=user.get("id"),
+        username=user.get("login"),
+        role="github_user",
+    )
+
+
+def _github_base_source(event: str, event_uuid: str, payload: dict[str, Any]) -> TaskSource:
+    repo = payload.get("repository") or {}
+    full_name = repo.get("full_name")
+    return TaskSource(
+        kind="github_webhook",
+        event=event,
+        event_uuid=event_uuid,
+        repo=full_name,
+        repo_id=repo.get("id"),
+        path_with_namespace=full_name,
+    )
+
+
+def _normalize_github_issues(
+    event: str,
+    event_uuid: str,
+    payload: dict[str, Any],
+    project: Project,
+    registry: ProjectRegistry,
+    now: datetime,
+) -> NormalizeResult:
+    action = payload.get("action")
+    issue = payload.get("issue") or {}
+    labels = _github_labels(payload)
+    source = _github_base_source(event, event_uuid, payload)
+    source.issue_iid = issue.get("number")
+    source.url = issue.get("html_url")
+
+    if issue.get("state") == "closed" or action == "closed":
+        return NormalizeResult(task=None, status="ignored", reason="issue_closed")
+    if action not in {"opened", "reopened", "labeled"}:
+        return NormalizeResult(task=None, status="ignored", reason=f"issue_action_{action}")
+
+    worker = registry.route(project, "issue", labels)
+    task = Task(
+        task_id=new_task_id(now),
+        trace_id=new_trace_id(),
+        type="issue",
+        project=project.key,
+        source=source,
+        requester=_github_requester(payload),
+        assigned_to=worker,
+        skill=DEFAULT_SKILL_FOR_TYPE["issue"],
+        inputs={
+            "issue_iid": issue.get("number"),
+            "issue_title": issue.get("title"),
+            "issue_body": issue.get("body") or "",
+            "labels": labels,
+            "action": action,
+            "workspace_path": project.workspace_path,
+            "test_command": project.test_command,
+            "branch": f"fix/issue-{issue.get('number')}",
+            "data_classification": project.data_classification,
+            "llm_backend": project.llm_backend,
+            "scm": project.scm,
+            "repo": project.repo or project.path_with_namespace,
+        },
+        constraints=_constraints(worker),
+        created_at=now,
+    )
+
+    if project.opt_in_label not in labels:
+        task.state = TaskState.RECEIVED
+        task.assigned_to = None
+        return NormalizeResult(task=task, status="recorded", reason="opt_in_label_missing")
+
+    if action == "labeled":
+        lbl = payload.get("label") or {}
+        if (lbl.get("name") or "") != project.opt_in_label:
+            return NormalizeResult(task=None, status="ignored", reason="issue_update_not_opt_in")
+
+    task.state = TaskState.QUEUED
+    return NormalizeResult(task=task, status="queued")
+
+
+def _normalize_github_workflow_run(
+    event: str,
+    event_uuid: str,
+    payload: dict[str, Any],
+    project: Project,
+    registry: ProjectRegistry,
+    now: datetime,
+) -> NormalizeResult:
+    run = payload.get("workflow_run") or {}
+    if run.get("conclusion") != "failure":
+        return NormalizeResult(
+            task=None,
+            status="ignored",
+            reason=f"workflow_run_conclusion_{run.get('conclusion')}",
+        )
+
+    source = _github_base_source(event, event_uuid, payload)
+    source.pipeline_id = run.get("id")
+    source.url = run.get("html_url")
+    worker = registry.route(project, "pipeline_failed", [])
+    task = Task(
+        task_id=new_task_id(now),
+        trace_id=new_trace_id(),
+        type="pipeline_failed",
+        project=project.key,
+        source=source,
+        requester=_github_requester(payload),
+        assigned_to=worker,
+        skill=DEFAULT_SKILL_FOR_TYPE["pipeline_failed"],
+        inputs={
+            "pipeline_id": run.get("id"),
+            "ref": run.get("head_branch"),
+            "sha": run.get("head_sha"),
+            "status": run.get("conclusion"),
+            "failed_jobs": [],
+            "workspace_path": project.workspace_path,
+            "branch": f"hotfix/ci-{run.get('id')}",
+            "data_classification": project.data_classification,
+            "llm_backend": project.llm_backend,
+            "scm": project.scm,
+            "repo": project.repo or project.path_with_namespace,
+        },
+        constraints=_constraints(worker),
+        state=TaskState.QUEUED,
+        created_at=now,
+    )
+    return NormalizeResult(task=task, status="queued")
+
+
+def _normalize_github_workflow_job(
+    event: str,
+    event_uuid: str,
+    payload: dict[str, Any],
+    project: Project,
+    registry: ProjectRegistry,
+    now: datetime,
+) -> NormalizeResult:
+    action = payload.get("action")
+    job = payload.get("workflow_job") or {}
+    if action not in {"completed"}:
+        return NormalizeResult(task=None, status="ignored", reason=f"workflow_job_action_{action}")
+    if job.get("conclusion") != "failure":
+        return NormalizeResult(
+            task=None,
+            status="ignored",
+            reason=f"job_status_{job.get('conclusion')}",
+        )
+
+    source = _github_base_source(event, event_uuid, payload)
+    source.job_id = job.get("id")
+    source.pipeline_id = job.get("run_id")
+    source.url = job.get("html_url")
+    worker = registry.route(project, "job_failed", [])
+    labels = job.get("labels") if isinstance(job.get("labels"), list) else []
+    task = Task(
+        task_id=new_task_id(now),
+        trace_id=new_trace_id(),
+        type="job_failed",
+        project=project.key,
+        source=source,
+        requester=_github_requester(payload),
+        assigned_to=worker,
+        skill=DEFAULT_SKILL_FOR_TYPE["job_failed"],
+        inputs={
+            "job_id": job.get("id"),
+            "job_name": job.get("name"),
+            "stage": labels[0] if labels else None,
+            "pipeline_id": job.get("run_id"),
+            "ref": job.get("head_branch"),
+            "sha": job.get("head_sha"),
+            "failure_reason": job.get("conclusion"),
+            "workspace_path": project.workspace_path,
+            "branch": f"hotfix/ci-{job.get('run_id')}",
+            "data_classification": project.data_classification,
+            "llm_backend": project.llm_backend,
+            "scm": project.scm,
+            "repo": project.repo or project.path_with_namespace,
         },
         constraints=_constraints(worker),
         state=TaskState.QUEUED,

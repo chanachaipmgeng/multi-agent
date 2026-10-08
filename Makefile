@@ -67,6 +67,9 @@ up-observability: ## D4.1: Prometheus + Grafana + Loki + Tempo + Alertmanager + 
 	$(COMPOSE) --profile observability up -d \
 		loki tempo otel-collector promtail prometheus alertmanager grafana
 
+up-console: ## DECISION-20 Operator Console on :8088 (needs gateway up)
+	$(COMPOSE) --profile console up -d --build operator-console
+
 up-socraticode: ## start Ollama + Qdrant for SocratiCode MCP (DECISION-6)
 	@docker volume create socraticode_ollama_data >/dev/null
 	@docker volume create socraticode_qdrant_data >/dev/null
@@ -216,4 +219,4 @@ skill-accept-sandbox: ## ≥3 sandbox-smoke skill-acceptance drills (needs emaw-
 test-scripts: ## render-ingress unit tests (needs PyYAML)
 	@$(PY) -m pytest -q scripts/test_render_ingress.py
 
-.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-socraticode socraticode-check up-local-free restart-adapters up-cloud dev-flow-live local-llm-pull local-free-check preflight ingress-render audit-export audit-verify up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration test-scripts lint gitleaks webhook-test verify-phase0 skill-accept-sandbox
+.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-console up-socraticode socraticode-check up-local-free restart-adapters up-cloud dev-flow-live local-llm-pull local-free-check preflight ingress-render audit-export audit-verify up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration test-scripts lint gitleaks webhook-test verify-phase0 skill-accept-sandbox

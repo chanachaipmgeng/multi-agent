@@ -1,6 +1,6 @@
 # Runbook — Cloudflare Tunnel (ingress)
 
-Scope: Named Tunnel `emaw` → `https://webhook.<org>.com/webhook/gitlab` → webhook-gateway `:8700`.
+Scope: Named Tunnel `emaw` → `https://webhook.<org>.com/webhook/gitlab` (and `/webhook/github`) → webhook-gateway `:8700`.
 Design §5.2, checklist E1. Blocked until DECISION-5 (domain on the team's Cloudflare account).
 
 ## Setup (once)

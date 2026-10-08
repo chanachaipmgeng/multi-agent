@@ -14,11 +14,11 @@ from .breaker import CircuitBreaker
 from .consumer import Consumer
 from .control import ControlPlane
 from .dispatch import build_dispatcher
-from .gitlab import GitLabClient
 from .metrics import start_metrics_server
 from .notify import TelegramNotifier
 from .projects import ProjectRegistry
 from .router import Router
+from .scm import build_scm_router
 from .settings import Settings
 from .store import build_store
 
@@ -35,9 +35,10 @@ async def _serve_worker(settings: Settings) -> None:
     )
     store = build_store(settings.database_url)
     dispatcher = build_dispatcher(settings)
-    gitlab = GitLabClient(
-        settings.gitlab_base_url, settings.gitlab_token, trace_max_bytes=settings.trace_max_bytes
-    )
+    registry = None
+    if settings.projects_file:
+        registry = ProjectRegistry.from_yaml(settings.projects_file)
+    scm = build_scm_router(settings, registry=registry)
     notifier = TelegramNotifier(settings.telegram_token, settings.telegram_chat_id)
     control = ControlPlane(redis, prefix=settings.control_prefix)
 
@@ -65,7 +66,7 @@ async def _serve_worker(settings: Settings) -> None:
         redis=redis,
         store=store,
         dispatcher=dispatcher,
-        gitlab=gitlab,
+        scm=scm,
         notifier=notifier,
         control=control,
         breaker=breaker,
@@ -107,7 +108,7 @@ async def _serve_worker(settings: Settings) -> None:
         if metrics_server is not None:
             metrics_server.shutdown()
         await dispatcher.aclose()
-        await gitlab.aclose()
+        await scm.aclose()
         await notifier.aclose()
         await artifacts.aclose()
         await store.close()

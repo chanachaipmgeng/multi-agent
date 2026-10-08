@@ -24,8 +24,9 @@ metadata:
 3. `test_failure` → HANDOFF ไป `default_worker` แล้วจบ
 4. `dependency` / `config` → worktree `hotfix/ci-<pipeline_id>` · แก้เฉพาะ CI/Docker · self-heal ≤ 2
 5. Secret scan + commit `ci: …`
-6. ขอ `human-approval-gate` ก่อน push + เปิด MR
-7. ปิดท้ายด้วย **HANDOFF block** (`skills/_shared/README.md`)
+6. ขอ `human-approval-gate` ก่อน push + เปิด MR/PR (`action: push_work_branch_and_open_mr`)
+7. เมื่อ approved → skill [`open-change-request`](../_shared/open-change-request.md) ตาม `inputs.scm`
+8. ปิดท้ายด้วย **HANDOFF block** (`skills/_shared/README.md`)
 
 ## ห้าม
 

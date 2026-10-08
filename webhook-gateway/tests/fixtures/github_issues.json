@@ -1,0 +1,27 @@
+{
+  "action": "opened",
+  "issue": {
+    "id": 1,
+    "number": 42,
+    "title": "Fix mobile overflow on dashboard",
+    "body": "On viewports < 400px the dashboard grid overflows.",
+    "state": "open",
+    "html_url": "https://github.com/acme/sandbox-github/issues/42",
+    "labels": [
+      {"id": 1, "name": "agent-ready"},
+      {"id": 2, "name": "area:frontend"},
+      {"id": 3, "name": "bug"}
+    ]
+  },
+  "repository": {
+    "id": 88888,
+    "name": "sandbox-github",
+    "full_name": "acme/sandbox-github",
+    "html_url": "https://github.com/acme/sandbox-github",
+    "default_branch": "main"
+  },
+  "sender": {
+    "id": 1001,
+    "login": "qa-lead"
+  }
+}

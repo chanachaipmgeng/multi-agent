@@ -33,11 +33,17 @@ cp config/rbac.example.yaml config/rbac.yaml
 make up                             # redis + postgres + gateway + minio + router + 5 adapters
 curl -s localhost:8700/readyz
 make webhook-test                   # → queued → router → stream:<role>
+make up-console                     # Operator Console SPA → http://127.0.0.1:8088
 make phase3-check                   # after agents are up
 ```
 
+GitHub webhook (optional): set `SECRET_GITHUB_WEBHOOK_SECRET` + project `scm: github` in
+`config/projects.yaml`, then `POST /webhook/github` with HMAC. See [`docs/operator-console.md`](operator-console.md)
+and DECISION-4 / DECISION-20.
+
 Ports (all bound to `127.0.0.1`): gateway 8700, redis 6379, postgres 5432, MinIO 9000/9001,
-Hermes dashboard 9119, Hermes API 8642 (coordinator) / 8643 (dev-backend).
+Hermes dashboard 9119, Hermes API 8642 (coordinator) / 8643 (dev-backend),
+Operator Console 8088 (`make up-console`, profile `console` — needs gateway up).
 
 ## 3b. SocratiCode infra (Phase 2 / DECISION-6)
 

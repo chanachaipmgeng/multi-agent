@@ -31,6 +31,7 @@ Layout: `skills/<agent>/<skill>.md`, plus `skills/_dev-common/` (shared by
 | `human-approval-gate` | coordinator | 0→3 | v1.1 — `/internal/approvals` + y/n nonce (DECISION-17) |
 | `fix-pipeline`, `deploy-prod` | devops | 3 | implemented |
 | `write-e2e`, `smoke-test` | qa | 3 | implemented |
+| `open-change-request` | `_shared` → FE/BE/devops/coordinator/reviewer/qa | 1 | implemented — GitLab MR / GitHub PR via `inputs.scm` |
 
 Keep steps numbered and explicit about *stop* conditions — the self-heal limit
 and the approval gate are what make these safe to run unattended.
