@@ -59,15 +59,35 @@
 | hermes_api oneshot | PARTIAL — runs complete under local-free LLM without tool execution; promote only after cloud/Telegram |
 | Org unblock doc | PASS — [org-unblock.md](org-unblock.md) + commented `config/org.yaml` |
 
-## Still pending (next rounds / org-blocked)
+## Prep done — still blocked on org / keys (2026-10-08)
+
+| ID | Prep in repo | Blocker to close |
+|---|---|---|
+| D4.3 | ✅ `scripts/render-ingress.py`, `make ingress-render` (refuses inventing domain), grafana ingress in example, Access/WAF checklist generator; unit test 2/2 | DECISION-5 domain |
+| D4.4 | ✅ `make audit-export` / `audit-verify` — bucket `emaw-audit` object-lock GOVERNANCE 365d; sha256 + retention info OK | Vault = infra DECISION |
+| D4.8 | ✅ [compliance-review.md](compliance-review.md); Loki `retention_period: 720h` + compactor; Prometheus `storage.tsdb.retention.time=90d` | DECISION-3/9 legal sign-off |
+| Ops | ✅ `ADAPTER_DISPATCHER=hermes_api` restored; `make preflight` / `restart-adapters` / `up-cloud` / `dev-flow-live` | real `SECRET_LLM_KEY_*` for cloud |
+
+### Live evidence — prep round
+
+| Check | Result |
+|---|---|
+| `docker exec … printenv DISPATCHER` | PASS — `hermes_api` |
+| `make preflight` (LLM_MODE=local) | PASS — 0 failed (LLM/Telegram placeholders = warnings) |
+| `preflight --require-cloud-keys` | FAIL as expected — blocks `up-cloud` until real keys |
+| `make ingress-render` | FAIL as expected — `org.domain` still `<to confirm>` |
+| `pytest scripts/test_render_ingress.py` | PASS — 2 |
+| `make audit-export DAY=2026-10-08` + verify | PASS — GOVERNANCE retention present |
+| Loki / Prometheus | PASS — ready; retention flags loaded |
+| Unit tests | PASS — adapter 46 · gateway 44 |
+
+## Still pending (cannot finish without humans)
 
 | ID | Item | Blocker |
 |---|---|---|
-| D4.3 | Cloudflare Access / WAF | DECISION-5 |
-| D4.4 | Vault + immutable audit export | infra DECISION |
-| D4.8 | Compliance review | DECISION-3/9 |
-| Flow C | Telegram live + skill acceptance ≥3 on **pilot** repos | DECISION-8/11 |
+| Flow C | Telegram live + skill acceptance ≥3 on **pilot** repos | DECISION-8/11 + bot token |
 | `make up-prod` on VM | — | DECISION-2 |
 | Weekly review W1–W2 filled | after go-live | production cutover |
+| Live agent coding | OpenRouter (or larger local) | real LLM keys |
 
 See [docs/org-unblock.md](org-unblock.md) for which `config/org.yaml` fields unlock each item.

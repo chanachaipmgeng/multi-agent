@@ -10,13 +10,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from pathlib import Path
 
 BASE = os.environ.get("HERMES_API_BASE", "http://127.0.0.1:8642").rstrip("/")
+SANDBOX = Path(os.environ.get("SANDBOX_ROOT", "/workspace/sandbox-smoke"))
 
 
 def _key() -> str:
@@ -89,6 +92,46 @@ PROMPTS = [
 ]
 
 
+def _git(*args: str) -> str:
+    return subprocess.check_output(
+        ["git", "-C", str(SANDBOX), *args],
+        text=True,
+        stderr=subprocess.DEVNULL,
+    ).strip()
+
+
+def sandbox_commit_evidence(before_sha: str) -> tuple[bool, str]:
+    """Pass only with a new non-main commit, green tests, and no upstream (no push)."""
+    try:
+        branch = _git("rev-parse", "--abbrev-ref", "HEAD")
+        sha = _git("rev-parse", "HEAD")
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        return False, f"git error: {exc}"
+    if branch in {"main", "master", "HEAD"}:
+        return False, f"still on {branch} (need work branch)"
+    if sha == before_sha:
+        return False, f"no new commit (still {sha[:8]})"
+    try:
+        _git("rev-parse", "--abbrev-ref", "@{u}")
+        return False, "upstream set — push must go through HITL"
+    except subprocess.CalledProcessError:
+        pass
+    try:
+        proc = subprocess.run(
+            ["bash", str(SANDBOX / "test.sh")],
+            cwd=str(SANDBOX),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"test.sh error: {exc}"
+    if proc.returncode != 0:
+        return False, f"test.sh exit {proc.returncode}"
+    return True, f"branch={branch} sha={sha[:8]} test=green no-push"
+
+
 def poll_run(run_id: str, timeout_s: int) -> dict:
     deadline = time.time() + timeout_s
     terminal = {
@@ -121,6 +164,11 @@ def main() -> int:
     ap.add_argument("--rounds", type=int, default=3)
     ap.add_argument("--timeout", type=int, default=900, help="seconds per run")
     ap.add_argument("--dry-run", action="store_true", help="create runs but do not wait")
+    ap.add_argument(
+        "--require-commit",
+        action="store_true",
+        help="pass only if sandbox got a new non-main commit + green test.sh (no push)",
+    )
     args = ap.parse_args()
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -133,6 +181,10 @@ def main() -> int:
     for i in range(args.rounds):
         skill, prompt = PROMPTS[i % len(PROMPTS)]
         idem = f"skill-accept-{stamp}-r{i+1}"
+        try:
+            before_sha = _git("rev-parse", "HEAD")
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            before_sha = ""
         body = {
             "input": prompt,
             "messages": [{"role": "user", "content": prompt}],
@@ -169,17 +221,23 @@ def main() -> int:
         final = poll_run(run_id, args.timeout)
         status = str(final.get("status") or final.get("state") or "unknown")
         row["status"] = status
-        # waiting_for_approval / completed = pass for HITL-respecting flow
         ok_statuses = {"completed", "succeeded", "success", "waiting_for_approval"}
-        row["pass"] = status.lower() in ok_statuses and not final.get("_poll_timeout")
-        if final.get("_poll_timeout"):
-            row["notes"] = "poll timeout"
+        status_ok = status.lower() in ok_statuses and not final.get("_poll_timeout")
+        if args.require_commit:
+            ev_ok, ev_note = sandbox_commit_evidence(before_sha)
+            row["pass"] = bool(status_ok and ev_ok)
+            row["notes"] = ev_note if not ev_ok else ev_note
+            if not status_ok:
+                row["notes"] = f"status={status}; {row['notes']}"
         else:
-            # keep a short snip of output without dumping full transcript
-            out = final.get("output") or final.get("result") or final.get("error") or ""
-            row["notes"] = str(out)[:240]
+            row["pass"] = status_ok
+            if final.get("_poll_timeout"):
+                row["notes"] = "poll timeout"
+            else:
+                out = final.get("output") or final.get("result") or final.get("error") or ""
+                row["notes"] = str(out)[:240]
         results.append(row)
-        print(f"round={i+1} status={status} pass={row['pass']}")
+        print(f"round={i+1} status={status} pass={row['pass']} notes={row['notes'][:120]}")
 
     out_path = os.environ.get(
         "SKILL_ACCEPT_OUT",

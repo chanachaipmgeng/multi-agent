@@ -111,6 +111,8 @@ Task envelope (design §4.3): `task_id`, `trace_id`, `type`, `project`, `source`
 | Phase 3 router fan-out (DECISION-16) | `queue-adapter` `MODE=router|worker`, HANDOFF YAML, MinIO SigV4 artifacts |
 | Dashboard basic auth (DECISION-18) | `secrets/dashboard_password` → `HERMES_DASHBOARD_BASIC_AUTH_*` · `:9119` |
 | Metrics §8.2 | adapter `:9101–9106/metrics` (host) · stubs `self_heal` / `sandbox_exec` / `llm_cost_usd` · gateway `approval_latency_seconds` |
+| Preflight / cloud switch | `make preflight` · `make up-cloud` (needs real LLM keys) · `make restart-adapters` |
+| D4.3/4/8 prep | `make ingress-render` · `make audit-export` · [docs/compliance-review.md](docs/compliance-review.md) |
 | Backup / restore (D4.5) | `make backup` · `make restore-drill BACKUP=…` · `docs/runbooks/restore.md` |
 | Supply chain (D4.6) | digest-pinned images · `scripts/pin-digests.sh` · CI Trivy |
 | Observability (D4.1) | `make up-observability` · Grafana :3000 · 4 dashboards · Alertmanager → Telegram |

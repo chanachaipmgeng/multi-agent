@@ -90,11 +90,39 @@ up-local-free: ## local-free stack: platform + router + 5 adapters + socraticode
 		coordinator dev-frontend dev-backend reviewer qa devops
 	@scripts/minio-init.sh || true
 
+restart-adapters: ## recreate router + role adapters (keeps ADAPTER_DISPATCHER from .env; default hermes_api)
+	ADAPTER_DISPATCHER=$${ADAPTER_DISPATCHER:-hermes_api} $(COMPOSE_LOCAL_FREE) up -d --force-recreate \
+		router adapter-dev-frontend adapter-dev-backend adapter-reviewer adapter-qa adapter-devops
+
+up-cloud: ## switch agents to OpenRouter (needs real SECRET_LLM_KEY_*; runs preflight)
+	@scripts/preflight.sh --require-cloud-keys
+	@LLM_MODE=cloud scripts/hermes-seed-env.sh
+	@scripts/sync-skills.sh
+	ADAPTER_DISPATCHER=hermes_api $(COMPOSE) --profile agents up -d --force-recreate \
+		router adapter-dev-frontend adapter-dev-backend adapter-reviewer adapter-qa adapter-devops \
+		coordinator dev-frontend dev-backend reviewer qa devops
+
+dev-flow-live: ## ≥3 hermes_api skill-accept rounds on sandbox-smoke (needs cloud LLM + emaw-dev-backend)
+	@docker cp scripts/skill-accept-sandbox.py emaw-dev-backend:/tmp/skill-accept-sandbox.py
+	@docker exec emaw-dev-backend python /tmp/skill-accept-sandbox.py --rounds 3 --timeout 1800 --require-commit
+
 local-llm-pull: ## pull LOCAL_LLM_MODEL into inference-ollama (default qwen2.5-coder:7b)
 	docker exec emaw-inference-ollama ollama pull $(LOCAL_LLM_MODEL)
 
 local-free-check: ## smoke-check local-free LLM + SocratiCode infra
 	@scripts/local-free-check.sh
+
+preflight: ## check placeholders, dispatcher, org.yaml (no secret values printed)
+	@scripts/preflight.sh
+
+ingress-render: ## D4.3 prep: render cloudflared config + Access/WAF doc from org.yaml
+	@$(PY) scripts/render-ingress.py
+
+audit-export: ## D4.4 prep: export audit_events day → MinIO object-lock bucket (DAY=YYYY-MM-DD)
+	@scripts/audit-export.sh $(DAY)
+
+audit-verify: ## D4.4 prep: verify hash + retention on exported day (DAY=YYYY-MM-DD)
+	@scripts/audit-export.sh --verify $(DAY)
 
 up-prod: ## production override on Linux VM (needs secrets + rbac.yaml)
 	@test -s secrets/hermes_api_key || (echo "decrypt secrets first"; exit 1)
@@ -185,4 +213,7 @@ skill-accept-sandbox: ## ≥3 sandbox-smoke skill-acceptance drills (needs emaw-
 	@docker cp scripts/skill-accept-sandbox-drill.sh emaw-dev-backend:/tmp/skill-accept-sandbox-drill.sh
 	@docker exec emaw-dev-backend bash /tmp/skill-accept-sandbox-drill.sh
 
-.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-socraticode socraticode-check up-local-free local-llm-pull local-free-check up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration lint gitleaks webhook-test verify-phase0 skill-accept-sandbox
+test-scripts: ## render-ingress unit tests (needs PyYAML)
+	@$(PY) -m pytest -q scripts/test_render_ingress.py
+
+.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-socraticode socraticode-check up-local-free restart-adapters up-cloud dev-flow-live local-llm-pull local-free-check preflight ingress-render audit-export audit-verify up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration test-scripts lint gitleaks webhook-test verify-phase0 skill-accept-sandbox

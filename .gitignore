@@ -11,6 +11,7 @@ age.key
 *.key
 cloudflared/*.json
 cloudflared/config.yml
+cloudflared/access-and-waf.md
 
 # --- hermes runtime data (memory/sessions stay on the host) -----------------
 hermes-data/*/memory/*
