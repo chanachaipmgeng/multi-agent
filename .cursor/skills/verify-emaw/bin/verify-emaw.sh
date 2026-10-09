@@ -92,6 +92,21 @@ drive_pause_control() {
   log "PROOF pause-control: pause then resume OK"
 }
 
+drive_local_free_offline() {
+  set +e
+  bash scripts/local-free-check.sh | tee "$EVIDENCE/local-free-check.txt"
+  lf_rc=${PIPESTATUS[0]:-$?}
+  set -e
+  [ "$lf_rc" -eq 0 ] || { log "FAIL local-free-check exit=$lf_rc"; return 1; }
+  code=$(curl -fsS -o /dev/null -w '%{http_code}' http://127.0.0.1:8088/ 2>/dev/null || echo "000")
+  printf '%s\n' "$code" | tee "$EVIDENCE/console-http.txt"
+  if [ "$code" = "200" ]; then
+    log "PROOF local-free-offline: local-free-check OK + console :8088 → 200"
+  else
+    log "PROOF local-free-offline: local-free-check OK (console :8088 → $code — optional; run make up-console / up-offline)"
+  fi
+}
+
 cleanup() {
   if [ -f "$EVIDENCE/pause.flag" ] && [ -n "$API_KEY" ]; then
     curl -fsS -X POST "$GATEWAY_URL/internal/control/resume" \
@@ -121,6 +136,7 @@ case "$cmd" in
       observability) drive_observability ;;
       webhook-enqueue) drive_webhook_enqueue ;;
       pause-control) drive_pause_control ;;
+      local-free-offline) drive_local_free_offline ;;
       *) echo "unknown feature: $feature"; exit 2 ;;
     esac
     ;;

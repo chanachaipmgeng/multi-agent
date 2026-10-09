@@ -2,6 +2,10 @@
 
 Target: Ubuntu 24.04 + Docker Engine (DECISION-2). WSL2 is for Phase 0–2 only.
 
+**Air-gap / no OpenRouter / no Cloudflare:** use local-free packing instead of `make up-prod` —
+see [`offline-airgap.md`](offline-airgap.md) (`make pack-offline` → `load-offline` → `up-offline`).
+That path targets GPU hosts (e.g. dual RTX 5000) and Operator Console HITL.
+
 ## 1. Host prep
 
 ```bash

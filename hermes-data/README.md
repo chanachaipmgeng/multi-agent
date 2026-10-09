@@ -29,3 +29,5 @@ services, each with an `adapter-<role>` sidecar reading `stream:<role>`.
 Local-free: mount `config.local-free.yaml` (all six agents → shared `inference-ollama`).
 Each local-free config sets `model.ollama_num_ctx: 65536` (Hermes ≥0.21 minimum);
 compose also sets `OLLAMA_CONTEXT_LENGTH=65536` on `inference-ollama` (DECISION-15).
+`LOCAL_LLM_MODEL` / `LOCAL_LLM_FALLBACK` are written into these files by
+`scripts/sync-local-llm-model.sh` (`make sync-local-llm` / `up-local-free`).

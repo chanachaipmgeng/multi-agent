@@ -19,8 +19,15 @@ alwaysApply: true
 - Run: `make up-console` → `http://127.0.0.1:8088` (compose profile `console`). Auth: `HERMES_API_KEY` + `X-EMAW-User-Id` from `config/rbac.yaml`.
 - Extend console by adding gateway internal APIs first, then thin UI. Roadmap C1–C4 needs a DECISION + exit criteria before coding (see `docs/operator-console.md`).
 - Design §2.4: console is an allowed operator surface, not a second control plane.
+- **Air-gap / offline hosts:** Console is the primary HITL (no Telegram). Bring-up via `make up-offline` (local-free + console + observability). Do **not** use `make up-prod` (expects OpenRouter + cloudflared). See `docs/offline-airgap.md`.
+
+## Local-free / air-gap LLM (DECISION-15)
+
+- All 6 agents → `inference-ollama` via `docker-compose.local-free.yml` (NVIDIA `count: all`). Bare `onprem-llm` has no GPU stanza — always use local-free / `up-offline`.
+- `LOCAL_LLM_MODEL` / `LOCAL_LLM_FALLBACK` sync into `hermes-data/*/config.local-free.yaml` via `scripts/sync-local-llm-model.sh` (`make sync-local-llm`). Dev default 7b; dual 16 GB VRAM hosts prefer **14b**.
+- Pack/load: `make pack-offline` → transfer → `make load-offline` → `make up-offline`. Prove with verify-emaw feature `local-free-offline`.
 
 ## Docs / skills source of truth
 
 - Procedures live in `skills/` and promote via `make skills-sync` → `hermes-data/*/skills/emaw/`. Never edit hermes-data skills as the canonical source.
-- Operator proofs: `.cursor/skills/verify-emaw` (feature `operator-console`).
+- Operator proofs: `.cursor/skills/verify-emaw` (features `operator-console`, `local-free-offline`).

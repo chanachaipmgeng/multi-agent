@@ -49,9 +49,10 @@ Obsolete assumption: early drafts treated DECISION-6 as “blocked until SECRET_
 |---|---|
 | Scope | **all 6 agents** (coordinator, dev-frontend, dev-backend, reviewer, qa, devops) |
 | Provider | Hermes `model.provider: custom` → `http://inference-ollama:11434/v1` |
-| Default model | `qwen2.5-coder:7b` (GPU 8–12 GB VRAM); override with `LOCAL_LLM_MODEL` |
+| Default model | `qwen2.5-coder:7b` (GPU 8–12 GB VRAM); override with `LOCAL_LLM_MODEL` (sync via `scripts/sync-local-llm-model.sh`) |
 | Context | Hermes ≥0.21 requires **≥64K** window — `OLLAMA_CONTEXT_LENGTH=65536` on `inference-ollama` + `model.ollama_num_ctx: 65536` in every `config.local-free.yaml` |
 | Compose | `docker-compose.local-free.yml` + `make up-local-free` / `local-llm-pull` / `local-free-check` |
+| Air-gap | `make pack-offline` / `load-offline` / `up-offline` — [`offline-airgap.md`](offline-airgap.md); recommend 14b on dual 16 GB VRAM |
 | Seed | `LLM_MODE=local` → `CUSTOM_API_KEY=ollama` in every agent `.env` |
 | Trade-off | Shared inference queue on one GPU (no extra VRAM); quality/latency below cloud Sonnet; 64K ctx uses more RAM on CPU hosts (~2–3 GiB model residency observed) |
 

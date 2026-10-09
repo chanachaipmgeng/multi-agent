@@ -96,10 +96,13 @@ cp -n config/rbac.example.yaml config/rbac.yaml   # gitignored; used by /interna
 make down
 
 make up-local-free              # compose -f docker-compose.yml -f docker-compose.local-free.yml
-make local-llm-pull             # first time: pull qwen2.5-coder:7b (GPU preferred; CPU works slowly)
+make local-llm-pull             # first time: pull LOCAL_LLM_MODEL (default qwen2.5-coder:7b)
 make local-free-check && make phase3-check
 make webhook-test KIND=issue    # Flow A smoke
 ```
+
+Air-gap GPU server (pack images/models on a networked host, load elsewhere):
+see [`offline-airgap.md`](offline-airgap.md) — `make pack-offline` / `load-offline` / `up-offline`.
 
 Host ports: inference Ollama `127.0.0.1:11436`, SocratiCode Ollama `11435`, Qdrant `16333`,
 gateway `8700`, MinIO `9000`.

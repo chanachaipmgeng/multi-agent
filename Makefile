@@ -88,6 +88,7 @@ up-local-free: ## local-free stack: platform + router + 5 adapters + socraticode
 	@docker volume create socraticode_ollama_data >/dev/null
 	@docker volume create socraticode_qdrant_data >/dev/null
 	@LLM_MODE=local scripts/hermes-seed-env.sh
+	@scripts/sync-local-llm-model.sh
 	@scripts/sync-skills.sh
 	ADAPTER_DISPATCHER=hermes_api $(COMPOSE_LOCAL_FREE) --profile agents --profile socraticode --profile onprem-llm up -d \
 		redis postgres webhook-gateway minio router \
@@ -95,6 +96,20 @@ up-local-free: ## local-free stack: platform + router + 5 adapters + socraticode
 		inference-ollama socraticode-ollama socraticode-qdrant \
 		coordinator dev-frontend dev-backend reviewer qa devops
 	@scripts/minio-init.sh || true
+
+up-offline: ## air-gap bring-up: local-free + Operator Console + observability (see docs/offline-airgap.md)
+	@$(MAKE) up-local-free
+	@$(MAKE) up-console
+	@$(MAKE) up-observability
+
+pack-offline: ## pack images + ollama/socraticode/reviewer volumes → offline-pack/<ts>/
+	@scripts/pack-offline.sh
+
+load-offline: ## load PACK=offline-pack/<ts> (images + volumes) on air-gap host
+	@scripts/load-offline.sh
+
+sync-local-llm: ## write LOCAL_LLM_MODEL into hermes-data/*/config.local-free.yaml
+	@scripts/sync-local-llm-model.sh
 
 restart-adapters: ## recreate router + role adapters (keeps ADAPTER_DISPATCHER from .env; default hermes_api)
 	ADAPTER_DISPATCHER=$${ADAPTER_DISPATCHER:-hermes_api} $(COMPOSE_LOCAL_FREE) up -d --force-recreate \
@@ -113,6 +128,7 @@ dev-flow-live: ## ≥3 hermes_api skill-accept rounds on sandbox-smoke (needs cl
 	@docker exec emaw-dev-backend python /tmp/skill-accept-sandbox.py --rounds 3 --timeout 1800 --require-commit
 
 local-llm-pull: ## pull LOCAL_LLM_MODEL into inference-ollama (default qwen2.5-coder:7b)
+	@scripts/sync-local-llm-model.sh
 	docker exec emaw-inference-ollama ollama pull $(LOCAL_LLM_MODEL)
 
 local-free-check: ## smoke-check local-free LLM + SocratiCode infra
@@ -228,4 +244,4 @@ skill-accept-sandbox: ## ≥3 sandbox-smoke skill-acceptance drills (needs emaw-
 test-scripts: ## render-ingress unit tests (needs PyYAML)
 	@$(PY) -m pytest -q scripts/test_render_ingress.py
 
-.PHONY: help prereqs bootstrap venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-console up-socraticode socraticode-check up-local-free restart-adapters up-cloud dev-flow-live local-llm-pull local-free-check preflight ingress-render audit-export audit-verify up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate dev-tunnel tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration test-scripts lint gitleaks webhook-test simulate-operator verify-phase0 skill-accept-sandbox
+.PHONY: help prereqs bootstrap venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-console up-socraticode socraticode-check up-local-free up-offline pack-offline load-offline sync-local-llm restart-adapters up-cloud dev-flow-live local-llm-pull local-free-check preflight ingress-render audit-export audit-verify up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate dev-tunnel tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration test-scripts lint gitleaks webhook-test simulate-operator verify-phase0 skill-accept-sandbox

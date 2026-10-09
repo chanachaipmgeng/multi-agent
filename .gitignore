@@ -56,6 +56,9 @@ tools/gitleaks
 # --- backups (D4.5; may contain secrets from volumes) ------------------------
 backups/
 
+# --- air-gap image/model packs (docs/offline-airgap.md) ----------------------
+offline-pack/
+
 # --- misc --------------------------------------------------------------------
 *.log
 .DS_Store

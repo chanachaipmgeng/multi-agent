@@ -1,7 +1,9 @@
 # Operator Console (DECISION-20)
 
 Thin first-party SPA that wraps gateway `/internal/*` for operators.
-Does **not** replace Telegram HITL (DECISION-17) or Grafana / Hermes / GitHost UIs.
+Does **not** replace Telegram HITL (DECISION-17) or Grafana / Hermes / GitHost UIs —
+except on **air-gap** hosts where Telegram is unavailable: Console is the primary HITL
+(`make up-offline`; see [offline-airgap.md](offline-airgap.md)).
 
 ## Run
 
@@ -9,6 +11,7 @@ Does **not** replace Telegram HITL (DECISION-17) or Grafana / Hermes / GitHost U
 # gateway must be up (default compose or make up / up-local-free)
 make up-console
 # → http://127.0.0.1:8088
+# air-gap one-shot: make up-offline  (local-free + console + observability)
 ```
 
 Local vite (dev):

@@ -35,6 +35,7 @@ Everything is auditable · Grow in phases
 |---|---|
 | `docker-compose.yml` | platform + `router` + 5 role adapters + MinIO; profiles `agents`, `ingress`, `onprem-llm`, `socraticode`, `console`, `single` (legacy) |
 | `docker-compose.local-free.yml` | all 6 agents → `inference-ollama` (`make up-local-free`, DECISION-15) |
+| Air-gap pack | `make pack-offline` / `load-offline` / `up-offline` — [`docs/offline-airgap.md`](docs/offline-airgap.md) |
 | `docker-compose.prod.yml` | Linux VM override (`make up-prod`) |
 | `webhook-gateway/` | GitLab + GitHub webhooks + `/internal/*` control plane (tasks, approvals, pause/safe-mode, projects, audit) + RBAC |
 | `queue-adapter/` | `MODE=router\|worker` — fan-out, HANDOFF parse, `ScmClient` enrich, breaker, MinIO upload, `/metrics` |
@@ -110,6 +111,7 @@ Task envelope (design §4.3): `task_id`, `trace_id`, `type`, `project`, `source`
 | Linux VM from Phase 3, WSL2 for dev now | `docs/local-dev.md`, compose is host-agnostic |
 | Hybrid LLM (cloud + Ollama for sensitive repos) | `projects.yaml#data_classification/llm_backend`, `inference-ollama` profile, per-profile `local_endpoint` |
 | Local-free all 6 agents (DECISION-15) | `docker-compose.local-free.yml`, `OLLAMA_CONTEXT_LENGTH=65536`, `model.ollama_num_ctx: 65536` |
+| Offline / air-gap GPU host | `docs/offline-airgap.md`, `LOCAL_LLM_MODEL` sync, `pack-offline` / `up-offline` |
 | Phase 3 router fan-out (DECISION-16) | `queue-adapter` `MODE=router|worker`, HANDOFF YAML, MinIO SigV4 artifacts |
 | Dashboard basic auth (DECISION-18) | `secrets/dashboard_password` → `HERMES_DASHBOARD_BASIC_AUTH_*` · `:9119` |
 | Metrics §8.2 | adapter `:9101–9106/metrics` (host) · stubs `self_heal` / `sandbox_exec` / `llm_cost_usd` · gateway `approval_latency_seconds` |

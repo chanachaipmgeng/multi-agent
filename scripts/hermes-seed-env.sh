@@ -127,6 +127,10 @@ if [ "${LLM_MODE:-cloud}" = "local" ]; then
     fi
   done
   echo "LLM_MODE=local → CUSTOM_API_KEY=ollama for all 6 agents"
+  # Keep config.local-free.yaml model names aligned with LOCAL_LLM_MODEL.
+  if [ -x "$ROOT/scripts/sync-local-llm-model.sh" ] || [ -f "$ROOT/scripts/sync-local-llm-model.sh" ]; then
+    bash "$ROOT/scripts/sync-local-llm-model.sh"
+  fi
 fi
 
 echo "Hermes .env files ready. Ensure TELEGRAM_ALLOWED_USERS is set for coordinator."

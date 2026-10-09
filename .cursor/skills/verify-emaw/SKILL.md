@@ -1,6 +1,6 @@
 ---
 name: verify-emaw
-description: Drive the EMAW platform (webhook-gateway, queue adapters, Hermes agents, observability, Operator Console) the way an operator would — HTTP + make smoke checks. Use when proving a change to compose, gateway, adapters, metrics, Grafana, or console; or when /poteto-mode needs a scripted green/red check.
+description: Drive the EMAW platform (webhook-gateway, queue adapters, Hermes agents, observability, Operator Console, local-free/air-gap LLM) the way an operator would — HTTP + make smoke checks. Use when proving a change to compose, gateway, adapters, metrics, Grafana, console, or offline pack/load; or when /poteto-mode needs a scripted green/red check.
 ---
 
 # Verify EMAW (operator surface)
@@ -22,12 +22,16 @@ make up-observability
 
 # Optional Operator Console SPA (DECISION-20)
 make up-console
+
+# Air-gap bring-up (local-free + console + observability) — see docs/offline-airgap.md
+# make up-offline
 ```
 
 Ready when:
 
 - `curl -fsS http://127.0.0.1:8700/healthz` returns JSON with ok status
 - `scripts/phase3-check.sh` prints `phase3-check: PASSED` (agents path)
+- `scripts/local-free-check.sh` passes when proving the Ollama path (`make local-free-check`)
 - `curl -fsS http://127.0.0.1:9090/-/healthy` and `http://127.0.0.1:9093/-/healthy` return OK (observability)
 - Optional: `curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8088/` returns `200`
 
@@ -52,7 +56,8 @@ Helper:
 
 ```bash
 bash .cursor/skills/verify-emaw/bin/verify-emaw.sh drive <feature-id>
-# feature-id: gateway-health | phase3-smoke | observability | webhook-enqueue | pause-control | operator-console
+# feature-id: gateway-health | phase3-smoke | observability | webhook-enqueue |
+#             pause-control | operator-console | local-free-offline
 ```
 
 Or follow the matching file under `features/`. Prefer the helper — it writes evidence under `evidence/<RUN_ID>/`.

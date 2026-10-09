@@ -6,9 +6,10 @@ Maintained source for proving operator-facing behavior of the Enterprise Multi-A
 
 - Repo root is the compose project (`docker-compose.yml`).
 - Secrets materialised: `secrets/gitlab_webhook_secret`, `secrets/hermes_api_key` (via `make secrets-dev` or decrypt).
-- Prefer stack already up from `make up-local-free` + `make up-observability`.
+- Prefer stack already up from `make up-local-free` + `make up-observability` (or `make up-offline` on air-gap hosts).
 - Run `bash .cursor/skills/verify-emaw/bin/verify-emaw.sh doctor` first.
 - Evidence goes under `.cursor/skills/verify-emaw/evidence/<RUN_ID>/` and must survive cleanup.
+- Air-gap pack/load: [`docs/offline-airgap.md`](../../../../docs/offline-airgap.md).
 
 ## Driving conventions
 
@@ -25,3 +26,4 @@ Maintained source for proving operator-facing behavior of the Enterprise Multi-A
 - [Webhook enqueue](./webhook-enqueue.md) — sample Issue Hook
 - [Pause control](./pause-control.md) — internal pause/resume
 - [Operator console](./operator-console.md) — `/internal/projects` + control status + optional `:8088`
+- [Local-free / air-gap](./local-free-offline.md) — `make local-free-check` + optional Console after `up-offline`
