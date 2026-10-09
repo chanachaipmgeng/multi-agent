@@ -1,0 +1,7 @@
+
+users:
+  1: { name: "dev", roles: [developer], projects: ["frontend-app"] }
+  2: { name: "admin", roles: [admin], projects: ["*"] }
+commands:
+  route-task: { roles: [developer, admin] }
+  pause: { roles: [admin] }

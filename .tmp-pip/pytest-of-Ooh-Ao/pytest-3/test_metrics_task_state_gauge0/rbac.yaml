@@ -1,0 +1,13 @@
+
+users:
+  987654321: { name: zeeme, roles: [admin, approver, developer], projects: ["*"] }
+  111: { name: viewer, roles: [viewer], projects: ["*"] }
+commands:
+  route-task: { roles: [developer, admin] }
+  status-report: { roles: [viewer, developer, admin] }
+  pause: { roles: [admin] }
+  resume: { roles: [admin] }
+  safe-mode: { roles: [admin] }
+  approve-push: { roles: [developer, admin] }
+  approve-migration: { roles: [approver, admin] }
+  deploy-prod: { roles: [approver, admin] }

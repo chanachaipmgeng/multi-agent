@@ -1,0 +1,8 @@
+
+projects:
+  - key: x
+    gitlab_project_id: 1
+    path_with_namespace: a/x
+    workspace_path: /workspace/x
+    default_worker: dev-mobile
+    allowed_workers: [dev-mobile]

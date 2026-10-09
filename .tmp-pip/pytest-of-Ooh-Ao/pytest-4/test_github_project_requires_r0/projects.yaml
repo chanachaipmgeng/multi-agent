@@ -1,0 +1,7 @@
+
+projects:
+  - key: x
+    scm: github
+    workspace_path: /workspace/x
+    default_worker: dev-backend
+    allowed_workers: [dev-backend]

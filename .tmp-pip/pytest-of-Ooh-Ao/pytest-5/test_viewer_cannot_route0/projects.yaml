@@ -1,0 +1,12 @@
+
+projects:
+  - key: frontend-app
+    gitlab_project_id: 1
+    path_with_namespace: acme/frontend-app
+    workspace_path: /workspace/frontend-app
+    default_worker: dev-frontend
+    allowed_workers: [dev-frontend, reviewer, qa]
+    test_command: "npm test"
+routing:
+  label_to_worker: { frontend: dev-frontend, backend: dev-backend, ci: devops, qa: qa }
+  pipeline_failed_worker: devops
