@@ -122,11 +122,18 @@ export const api = {
     }),
   listProjects: (s: Session) =>
     request<{ projects: ProjectRow[]; count: number }>(s, "/internal/projects"),
-  listAudit: (s: Session, taskId: string) =>
-    request<{ events: Array<Record<string, unknown>>; count: number }>(
+  listAudit: (
+    s: Session,
+    q: { taskId?: string; traceId?: string },
+  ) => {
+    const params = new URLSearchParams();
+    if (q.taskId) params.set("task_id", q.taskId);
+    if (q.traceId) params.set("trace_id", q.traceId);
+    return request<{ events: Array<Record<string, unknown>>; count: number }>(
       s,
-      `/internal/audit?task_id=${encodeURIComponent(taskId)}`,
-    ),
+      `/internal/audit?${params.toString()}`,
+    );
+  },
   listUsers: (s: Session) =>
     request<{
       users: Array<{ user_id: number; name: string; roles: string[] }>;

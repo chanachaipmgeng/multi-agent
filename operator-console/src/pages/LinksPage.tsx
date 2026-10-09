@@ -10,6 +10,11 @@ const LINKS = [
     note: "Operations / Agents / Cost / Security",
   },
   {
+    name: "Grafana Explore (Loki)",
+    url: `${import.meta.env.VITE_GRAFANA_URL || "http://127.0.0.1:3000"}/explore`,
+    note: "search logs by task_id / trace_id / event_uuid — docs/runbooks/trace-by-event.md",
+  },
+  {
     name: "MinIO console",
     url: import.meta.env.VITE_MINIO_URL || "http://127.0.0.1:9001",
     note: "artifacts",

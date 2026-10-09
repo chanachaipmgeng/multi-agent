@@ -231,7 +231,12 @@ class Router:
         metrics.inc("emaw_tasks_routed_total")
         await self.redis.xack(self.s.task_stream, self.s.consumer_group, message_id)
         self.processed += 1
-        log.info("routed %s → %s", task_id, worker)
+        log.info(
+            "routed task_id=%s worker=%s trace_id=%s",
+            task_id,
+            worker,
+            trace_id or "-",
+        )
 
     # --------------------------------------------------------------- results
     async def handle_result(self, message_id: str, fields: dict[Any, Any]) -> None:

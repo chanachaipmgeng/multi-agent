@@ -26,5 +26,6 @@
 - Stale agents: `time() - agent_heartbeat_timestamp > 300`
 - Failures: `rate(emaw_tasks_failed_total[1h])`
 - Loki: `{compose_service=~"webhook-gateway|router|adapter-.*"} |= "error"` (after redaction)
+- Trace one webhook: see [trace-by-event.md](trace-by-event.md) — LogQL `|= \`event_uuid=<UUID>\`` then follow `task_id` / `trace_id`
 
 Do **not** paste raw secrets into this log even if redaction failed — fix the pipeline instead.

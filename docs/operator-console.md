@@ -25,12 +25,14 @@ Login: `HERMES_API_KEY` + Telegram user id from `config/rbac.yaml`.
 | Page | API |
 |---|---|
 | Tasks / detail | `GET /internal/tasks`, `GET /internal/tasks/{id}`, `GET /internal/audit` |
-| Approvals inbox | `GET /internal/approvals`, `POST …/decide` |
+| Approvals inbox + history | `GET /internal/approvals?status=pending\|decided`, `POST …/decide` |
+| Audit search | `GET /internal/audit?task_id=\|trace_id=` |
 | Control | `GET/POST /internal/control/*` |
 | Projects | `GET /internal/projects` |
-| Links | Hermes `:9119`, Grafana `:3000`, MinIO `:9001` |
+| Links | Hermes `:9119`, Grafana `:3000` / Explore, MinIO `:9001` |
 
-Task detail shows SCM deep-links from `source.url`, `inputs.repo`, and URLs found in handoffs (`links[]`).
+Task detail shows SCM deep-links from `source.url`, `inputs.repo`, and URLs found in handoffs (`links[]`),
+plus Loki Explore links filtered by `task_id` / `trace_id` (see [runbooks/trace-by-event.md](runbooks/trace-by-event.md)).
 
 ## Roadmap C (after B stable)
 

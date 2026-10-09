@@ -301,7 +301,11 @@ class Consumer:
             await self.redis.xack(self.s.task_stream, self.s.consumer_group, message_id)
             self.processed += 1
             log.info(
-                "dispatched %s via %s (delivery %d)", task_id, self.dispatcher.name, deliveries
+                "dispatched task_id=%s via=%s delivery=%d trace_id=%s",
+                task_id,
+                self.dispatcher.name,
+                deliveries,
+                trace_id or "-",
             )
             return
 

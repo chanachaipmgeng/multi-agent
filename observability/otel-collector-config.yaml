@@ -1,6 +1,6 @@
-# OpenTelemetry Collector (D4.1 / D4.2) — OTLP in, redaction, export Tempo + debug
+# OpenTelemetry Collector (D4.1 / D4.2) — OTLP in, redaction, export Tempo + Loki
 # Container docker logs are collected by Promtail (see promtail-config.yaml) with the
-# same redaction patterns; this collector is the trace path + future app OTLP.
+# same redaction patterns; this collector is the trace path + OTLP logs → Loki.
 
 receivers:
   otlp:
@@ -42,6 +42,12 @@ exporters:
     endpoint: tempo:4317
     tls:
       insecure: true
+  # Loki native push (apps that emit OTLP logs); docker logs still go via Promtail
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    default_labels_enabled:
+      exporter: false
+      job: true
   debug:
     verbosity: basic
 
@@ -57,4 +63,4 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, transform/redact, batch]
-      exporters: [debug]
+      exporters: [loki, debug]

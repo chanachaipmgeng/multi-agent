@@ -1,0 +1,8 @@
+{
+  "type": "deploy_request",
+  "project": "sandbox-smoke",
+  "assigned_to": "devops",
+  "instruction": "simulate-operator: prepare deploy-prod checklist (do not deploy)",
+  "labels": ["ci"],
+  "idempotency_key": null
+}

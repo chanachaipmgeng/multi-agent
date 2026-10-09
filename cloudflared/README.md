@@ -6,8 +6,9 @@ not a redesign.
 
 ## Blocked on
 
-* **DECISION-5** — a domain on a *team* Cloudflare account (not personal). Until then only
-  `cloudflared tunnel --url http://localhost:8700` (Quick Tunnel, dev only) works.
+* **DECISION-5** — a domain on a *team* Cloudflare account (not personal). Until then use
+  `make dev-tunnel` (Quick Tunnel → `http://127.0.0.1:8700`, ephemeral URL). See
+  [`docs/runbooks/tunnel.md`](../docs/runbooks/tunnel.md) § Dev without domain.
 
 ## Named Tunnel, once the domain exists
 

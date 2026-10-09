@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -267,6 +268,50 @@ async def test_console_apis_approvals_projects_audit_control(client) -> None:
     users = await ac.get("/internal/rbac/users", headers=_headers(111))
     assert users.status_code == 200
     assert users.json()["count"] >= 1
+
+
+async def test_operator_fixture_create_and_approval_history(client) -> None:
+    """API-only drill path used by scripts/simulate-operator.sh (no Telegram)."""
+    ac, store, _redis = client
+    fixture = Path(__file__).parent / "fixtures" / "operator" / "create-task-feature.json"
+    body = json.loads(fixture.read_text(encoding="utf-8"))
+    body["project"] = "frontend-app"
+    body["assigned_to"] = "dev-frontend"
+    body["idempotency_key"] = "sim-op-fixture-1"
+    r = await ac.post("/internal/tasks", headers=_headers(), json=body)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "queued"
+    task_id = r.json()["task_id"]
+
+    ar = await ac.post(
+        "/internal/approvals",
+        headers=_headers(),
+        json={
+            "task_id": task_id,
+            "action": "push_work_branch_and_open_mr",
+            "payload": {"branch": "sim/op"},
+            "required_role": "developer",
+        },
+    )
+    assert ar.status_code == 200
+    nonce = ar.json()["nonce"]
+    decide_body = json.loads(
+        (Path(__file__).parent / "fixtures" / "operator" / "decide-approved.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    decide = await ac.post(
+        f"/internal/approvals/{nonce}/decide",
+        headers=_headers(),
+        json=decide_body,
+    )
+    assert decide.status_code == 200
+
+    pending = await ac.get("/internal/approvals?status=pending", headers=_headers(111))
+    assert all(a["nonce"] != nonce for a in pending.json()["approvals"])
+    history = await ac.get("/internal/approvals?status=decided", headers=_headers(111))
+    assert history.status_code == 200
+    assert any(a["nonce"] == nonce and a["decision"] == "approved" for a in history.json()["approvals"])
 
 
 async def test_metrics_task_state_gauge(client) -> None:

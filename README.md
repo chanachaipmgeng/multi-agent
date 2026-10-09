@@ -48,47 +48,43 @@ Everything is auditable · Grow in phases
 | `workspace/` | project clones (gitignored) + `_templates/` (`project-standards.md`, `.agentignore`, `.socraticodeignore`) + `.worktrees/` |
 | `examples/sandbox-smoke/` | minimal pilot project whose `./test.sh` returns exit 0/1 correctly |
 | `cloudflared/` | Named Tunnel config template + runbook (Phase 1, blocked on domain) |
-| `scripts/`, `Makefile` | prereq check, SOPS secrets, migrate, Hermes configure, onboard repo, skill sync, test webhook, Phase 0 verifier, **tunnel setup/status, GitLab webhook register, token scope check** |
+| `scripts/`, `Makefile` | `make bootstrap`, secrets, migrate, `dev-tunnel`, `simulate-operator`, webhook-test, Named Tunnel setup/status, GitLab webhook register |
 | `docs/` | exit criteria, `operator-console.md`, `secrets.md`, `environments.md`, `org-unblock.md`, `skill-acceptance.md`, `runbooks/` (E14 index) |
 | `.env.example`, `.sops.yaml`, `.gitleaks.toml`, `.agentignore`, `.pre-commit-config.yaml` | secrets & hygiene |
 
 ## Quick start (รันในเครื่อง / Run locally)
 
-ต้องมี: Docker + Compose v2, Python 3.12, (sops + age สำหรับ secrets จริง) — ตรวจด้วย `make prereqs`
+ต้องมี: Docker + Compose v2, Python 3.12, (sops + age สำหรับ secrets จริง) — ตรวจด้วย `make prereqs`.
+เป้าหมาย host: WSL2 / Linux (Docker Desktop + WSL บน Windows).
 
 ```bash
 git clone https://github.com/chanachaipmgeng/multi-agent.git && cd multi-agent
 
-# 1) secrets — dev shortcut (plaintext .env → ./secrets/*). Production path: make secrets-init / secrets-encrypt / secrets-decrypt
-cp .env.example .env && make secrets-dev
+# One-shot: prereqs → .env/rbac → secrets-dev → venv → up → webhook-test
+make bootstrap
 
-# 2) platform stack (router + per-role adapters + MinIO)
-cp config/rbac.example.yaml config/rbac.yaml
-make up                                  # redis + postgres + gateway + router + adapters + minio
-curl -s localhost:8700/readyz
+# Operator surfaces (ไม่ต้อง psql)
+make up-console                          # Tasks / Approvals HITL / Control → http://127.0.0.1:8088
+make up-observability                    # Grafana :3000 · Loki · Prometheus
 
-# 3) sample webhook → router fans out to stream:<role>
-make webhook-test                        # → queued → router → stream:dev-frontend
-docker compose exec postgres psql -U emaw -c 'select task_id,type,state,assigned_to from tasks'
+# Optional — Hermes agents
+# make hermes-seed && make skills-sync && make up-agents
+# Local-free (all 6 on Ollama): make down && make up-local-free && make local-llm-pull
+# GitLab webhook ก่อนมีโดเมน: make dev-tunnel   (Quick Tunnel; see docs/runbooks/tunnel.md)
+# API-only drills ไม่ใช้ Telegram: make simulate-operator CMD=create-task
 
-# 4) Hermes — cloud OR local-free (all 6 agents on Ollama)
-make hermes-seed && make skills-sync
-# make up-agents
-# Local-free (stop any Phase 2 single-adapter stack first):
-#   make down && make up-local-free && make local-llm-pull
-#   make local-free-check && make phase3-check && make webhook-test
-# Needs ≥64K Ollama context (DECISION-15); see docs/phase3-exit-criteria.md live-drill log.
-
-# 5) tests
-make test                                # gateway + adapter unit tests (incl. hermes_api dispatcher)
+make test                                # gateway + adapter unit tests
 make test-integration                    # +3 against Postgres (TEST_DATABASE_URL=...)
 make verify-phase0                       # Phase 0 exit-criteria self-check
 ```
 
+Production secrets path: `make secrets-init` / `secrets-encrypt` / `secrets-decrypt` (ไม่ใช้ `secrets-dev`).
+
 Phase 1 (ต้องมีโดเมน Cloudflare + GitLab จริง): กรอก [`config/org.yaml`](config/org.yaml) →
 `make tunnel-setup HOST=webhook.<org>.com SERVICE=1` →
 `make gitlab-webhook PROJECT=<group>/<repo> URL=https://webhook.<org>.com` → `make gitlab-token-check` →
-`make tunnel-status URL=https://webhook.<org>.com` — ดู [`docs/gitlab-setup.md`](docs/gitlab-setup.md)
+`make tunnel-status URL=https://webhook.<org>.com` — ดู [`docs/gitlab-setup.md`](docs/gitlab-setup.md).
+ก่อนมีโดเมน: `make dev-tunnel` (Quick Tunnel ชั่วคราว).
 
 Hermes (Phase 0): ดู [`docs/local-dev.md`](docs/local-dev.md) §4 และ [`docs/phase0-runbook.md`](docs/phase0-runbook.md)
 

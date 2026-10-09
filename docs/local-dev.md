@@ -28,22 +28,36 @@ Quick dev box without SOPS: `cp .env.example .env && make secrets-dev`.
 
 ## 3. Platform stack
 
+One-shot (recommended for new clones):
+
+```bash
+make bootstrap                      # prereqs → .env/rbac → secrets-dev → venv → up → webhook-test
+```
+
+Or step-by-step:
+
 ```bash
 cp config/rbac.example.yaml config/rbac.yaml
 make up                             # redis + postgres + gateway + minio + router + 5 adapters
 curl -s localhost:8700/readyz
 make webhook-test                   # → queued → router → stream:<role>
 make up-console                     # Operator Console SPA → http://127.0.0.1:8088
+make up-observability               # Grafana :3000 · Loki (agent/gateway logs) · Prometheus
 make phase3-check                   # after agents are up
 ```
 
+**Monitor / HITL without Telegram or `psql`:** Operator Console at
+http://127.0.0.1:8088 — Tasks, Approvals inbox (Approve/Reject parallel to Telegram y/n),
+Control (pause/safe-mode), Projects. Metrics/logs live in Grafana after `make up-observability`.
+See [`docs/operator-console.md`](operator-console.md).
+
 GitHub webhook (optional): set `SECRET_GITHUB_WEBHOOK_SECRET` + project `scm: github` in
-`config/projects.yaml`, then `POST /webhook/github` with HMAC. See [`docs/operator-console.md`](operator-console.md)
-and DECISION-4 / DECISION-20.
+`config/projects.yaml`, then `POST /webhook/github` with HMAC. See DECISION-4 / DECISION-20.
 
 Ports (all bound to `127.0.0.1`): gateway 8700, redis 6379, postgres 5432, MinIO 9000/9001,
 Hermes dashboard 9119, Hermes API 8642 (coordinator) / 8643 (dev-backend),
-Operator Console 8088 (`make up-console`, profile `console` — needs gateway up).
+Operator Console 8088 (`make up-console`, profile `console` — needs gateway up),
+Grafana 3000 / Prometheus 9090 (`make up-observability`).
 
 ## 3b. SocratiCode infra (Phase 2 / DECISION-6)
 
@@ -156,3 +170,21 @@ make gitleaks
 make verify-phase0
 make hooks
 ```
+
+## 7. API-only drills without Telegram
+
+Telegram is optional for local platform drills. The coordinator path that Telegram would
+trigger is `POST /internal/tasks` (Bearer `HERMES_API_KEY` + `X-EMAW-User-Id`). Use:
+
+```bash
+make up && make secrets-dev          # gateway + secrets/hermes_api_key
+make simulate-operator CMD=create-task
+make simulate-operator CMD=list-tasks
+# After an agent creates a HITL approval:
+# make simulate-operator CMD=list-approvals
+# make simulate-operator CMD="decide <nonce> approved"
+make simulate-operator CMD="audit --task-id <id>"
+```
+
+Fixtures: `webhook-gateway/tests/fixtures/operator/`. Override user with `EMAW_USER_ID`
+(must exist in `config/rbac.yaml`). HITL on the web: `make up-console` → `/approvals`.

@@ -41,3 +41,14 @@ scrape_configs:
       - replace:
           expression: '(?i)\b([A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|API_KEY)[A-Z0-9_]*)\s*[=:]\s*[''"]?[^\s''"]{6,}'
           replace: '${1}=[REDACTED]'
+      # Extract correlation ids into structured_metadata (not stream labels — avoid cardinality blow-up)
+      - regex:
+          expression: 'task_id=(?P<task_id>[A-Za-z0-9_.-]+)'
+      - regex:
+          expression: 'trace_id=(?P<trace_id>[A-Za-z0-9_.-]+)'
+      - regex:
+          expression: 'event_uuid=(?P<event_uuid>[A-Za-z0-9_.-]+)'
+      - structured_metadata:
+          task_id:
+          trace_id:
+          event_uuid:

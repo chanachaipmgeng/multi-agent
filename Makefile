@@ -18,6 +18,9 @@ help: ## show this help
 prereqs: ## check host prerequisites (D0.1)
 	@scripts/check-prereqs.sh
 
+bootstrap: ## one-shot: prereqs → .env/rbac → secrets-dev → venv → up → webhook-test
+	@scripts/bootstrap.sh
+
 venv: ## create the gateway + adapter virtualenvs with dev deps
 	@test -d $(VENV) || (cd $(GW) && ($(PY) -m venv .venv || uv venv .venv))
 	@if command -v uv >/dev/null; then uv pip install --python $(VENV)/bin/python -q -e "$(GW)[dev]"; \
@@ -160,6 +163,9 @@ outbox: ## list prompts adapters produced in dryrun mode
 	$(COMPOSE) exec adapter-dev-backend sh -c 'ls -1t /var/lib/queue-adapter/outbox | head -20'
 
 # ---------------------------------------------------------------- phase 1
+dev-tunnel: ## Quick Tunnel → local gateway (dev; no domain / DECISION-5)
+	@scripts/dev-tunnel.sh
+
 tunnel-setup: ## create Named Tunnel + DNS + config (HOST=webhook.example.com [NAME=emaw] [SERVICE=1])
 	@scripts/tunnel-setup.sh "$(HOST)" "$(or $(NAME),emaw)" $(if $(SERVICE),--service,)
 
@@ -209,6 +215,9 @@ gitleaks: ## scan the repo for secrets
 webhook-test: ## send a sample Issue Hook to the running gateway (KIND=issue|pipeline|job)
 	@scripts/send-test-webhook.sh $(or $(KIND),issue)
 
+simulate-operator: ## API-only operator drill via /internal/* (CMD=create-task|list-tasks|…)
+	@scripts/simulate-operator.sh $(CMD) $(ARGS)
+
 verify-phase0: ## run the Phase 0 exit-criteria self-check
 	@scripts/verify-phase0.sh
 
@@ -219,4 +228,4 @@ skill-accept-sandbox: ## ≥3 sandbox-smoke skill-acceptance drills (needs emaw-
 test-scripts: ## render-ingress unit tests (needs PyYAML)
 	@$(PY) -m pytest -q scripts/test_render_ingress.py
 
-.PHONY: help prereqs venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-console up-socraticode socraticode-check up-local-free restart-adapters up-cloud dev-flow-live local-llm-pull local-free-check preflight ingress-render audit-export audit-verify up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration test-scripts lint gitleaks webhook-test verify-phase0 skill-accept-sandbox
+.PHONY: help prereqs bootstrap venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-console up-socraticode socraticode-check up-local-free restart-adapters up-cloud dev-flow-live local-llm-pull local-free-check preflight ingress-render audit-export audit-verify up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate dev-tunnel tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration test-scripts lint gitleaks webhook-test simulate-operator verify-phase0 skill-accept-sandbox

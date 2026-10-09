@@ -258,13 +258,15 @@ def create_app(
             )
 
         log.info(
-            "queued %s type=%s project=%s worker=%s scm=%s trace=%s",
+            "queued task_id=%s type=%s project=%s worker=%s scm=%s "
+            "trace_id=%s event_uuid=%s",
             task.task_id,
             task.type,
             task.project,
             task.assigned_to,
             scm,
             task.trace_id,
+            event_uuid,
         )
         return done(
             200,

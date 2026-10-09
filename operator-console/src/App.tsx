@@ -8,6 +8,7 @@ import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { ControlPage } from "./pages/ControlPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 import { LinksPage } from "./pages/LinksPage";
+import { AuditPage } from "./pages/AuditPage";
 
 function Shell({ children }: { children: ReactNode }) {
   const { session, logout } = useAuth();
@@ -20,6 +21,9 @@ function Shell({ children }: { children: ReactNode }) {
         </NavLink>
         <NavLink to="/approvals" className={({ isActive }) => (isActive ? "active" : "")}>
           Approvals
+        </NavLink>
+        <NavLink to="/audit" className={({ isActive }) => (isActive ? "active" : "")}>
+          Audit
         </NavLink>
         <NavLink to="/control" className={({ isActive }) => (isActive ? "active" : "")}>
           Control
@@ -54,6 +58,7 @@ export function App() {
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
         <Route path="/approvals" element={<ApprovalsPage />} />
+        <Route path="/audit" element={<AuditPage />} />
         <Route path="/control" element={<ControlPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/links" element={<LinksPage />} />

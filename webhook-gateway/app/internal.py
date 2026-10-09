@@ -162,6 +162,16 @@ async def create_task(
         attrs={"source": "telegram", "worker": worker, "user_id": user_id},
     )
     msg_id = await request.app.state.publisher.publish(task)
+    log.info(
+        "queued task_id=%s type=%s project=%s worker=%s scm=internal "
+        "trace_id=%s event_uuid=- user_id=%s",
+        task.task_id,
+        task.type,
+        task.project,
+        worker,
+        task.trace_id,
+        user_id,
+    )
     return {
         "status": "queued",
         "task_id": task.task_id,

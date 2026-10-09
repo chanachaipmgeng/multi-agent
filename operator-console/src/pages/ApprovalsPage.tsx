@@ -3,17 +3,20 @@ import { Link } from "react-router-dom";
 import { api, type ApprovalRow } from "../api";
 import { useAuth } from "../auth";
 
+type Tab = "pending" | "decided";
+
 export function ApprovalsPage() {
   const { session } = useAuth();
+  const [tab, setTab] = useState<Tab>("pending");
   const [rows, setRows] = useState<ApprovalRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
 
-  async function load() {
+  async function load(status: Tab = tab) {
     if (!session) return;
     setError(null);
     try {
-      const data = await api.listApprovals(session, "pending");
+      const data = await api.listApprovals(session, status);
       setRows(data.approvals);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -21,8 +24,8 @@ export function ApprovalsPage() {
   }
 
   useEffect(() => {
-    void load();
-  }, [session]);
+    void load(tab);
+  }, [session, tab]);
 
   async function decide(nonce: string, decision: "approved" | "rejected") {
     if (!session) return;
@@ -30,7 +33,7 @@ export function ApprovalsPage() {
     setError(null);
     try {
       await api.decideApproval(session, nonce, decision);
-      await load();
+      await load("pending");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -41,9 +44,23 @@ export function ApprovalsPage() {
   return (
     <>
       <h1>Approvals</h1>
-      <p className="sub">HITL inbox (คู่ขนานกับ Telegram y/n)</p>
+      <p className="sub">HITL inbox (คู่ขนานกับ Telegram y/n) · history จาก status=decided</p>
       <div className="row">
-        <button type="button" className="primary" onClick={() => void load()}>
+        <button
+          type="button"
+          className={tab === "pending" ? "primary" : undefined}
+          onClick={() => setTab("pending")}
+        >
+          Pending
+        </button>
+        <button
+          type="button"
+          className={tab === "decided" ? "primary" : undefined}
+          onClick={() => setTab("decided")}
+        >
+          History
+        </button>
+        <button type="button" onClick={() => void load()}>
           Refresh
         </button>
       </div>
@@ -52,6 +69,7 @@ export function ApprovalsPage() {
         <div className="card" key={r.nonce}>
           <div className="row">
             <span className="badge warn">{r.action}</span>
+            {r.decision && <span className="badge">{r.decision}</span>}
             <Link className="mono" to={`/tasks/${r.task_id}`}>
               {r.task_id}
             </Link>
@@ -61,27 +79,33 @@ export function ApprovalsPage() {
           <pre className="mono" style={{ whiteSpace: "pre-wrap" }}>
             {JSON.stringify(r.payload_summary || {}, null, 2)}
           </pre>
-          <div className="row">
-            <button
-              type="button"
-              className="primary"
-              disabled={busy === r.nonce}
-              onClick={() => void decide(r.nonce, "approved")}
-            >
-              Approve
-            </button>
-            <button
-              type="button"
-              className="danger"
-              disabled={busy === r.nonce}
-              onClick={() => void decide(r.nonce, "rejected")}
-            >
-              Reject
-            </button>
-          </div>
+          {tab === "pending" && (
+            <div className="row">
+              <button
+                type="button"
+                className="primary"
+                disabled={busy === r.nonce}
+                onClick={() => void decide(r.nonce, "approved")}
+              >
+                Approve
+              </button>
+              <button
+                type="button"
+                className="danger"
+                disabled={busy === r.nonce}
+                onClick={() => void decide(r.nonce, "rejected")}
+              >
+                Reject
+              </button>
+            </div>
+          )}
         </div>
       ))}
-      {rows.length === 0 && <p className="sub">ไม่มี pending approval</p>}
+      {rows.length === 0 && (
+        <p className="sub">
+          {tab === "pending" ? "ไม่มี pending approval" : "ยังไม่มี decided approval"}
+        </p>
+      )}
     </>
   );
 }

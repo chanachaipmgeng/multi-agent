@@ -3,7 +3,25 @@
 Scope: Named Tunnel `emaw` → `https://webhook.<org>.com/webhook/gitlab` (and `/webhook/github`) → webhook-gateway `:8700`.
 Design §5.2, checklist E1. Blocked until DECISION-5 (domain on the team's Cloudflare account).
 
-## Setup (once)
+## Dev without domain (Quick Tunnel)
+
+Phase 0 does **not** need a public URL — use `make webhook-test` against `127.0.0.1:8700`.
+
+When you need a real GitLab/GitHub webhook before DECISION-5:
+
+```bash
+make up                    # gateway must be healthy
+make dev-tunnel            # cloudflared tunnel --url http://127.0.0.1:8700
+# → copy the https://*.trycloudflare.com URL from cloudflared output
+# → GitLab project webhook: <that-url>/webhook/gitlab + secrets/gitlab_webhook_secret
+```
+
+Notes:
+- Ephemeral URL (changes each run); no Cloudflare Access / WAF path filter
+- Do **not** use Quick Tunnel in production — prefer Named Tunnel after org domain is ready
+- Install `cloudflared` on the host PATH, or see the install hint printed by `scripts/dev-tunnel.sh`
+
+## Setup (once) — Named Tunnel
 
 ```bash
 cloudflared tunnel login                                   # browser → pick the zone

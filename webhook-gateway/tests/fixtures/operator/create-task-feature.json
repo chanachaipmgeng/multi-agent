@@ -1,0 +1,8 @@
+{
+  "type": "feature",
+  "project": "sandbox-smoke",
+  "assigned_to": "dev-backend",
+  "instruction": "simulate-operator: add a no-op comment in README for API-only drill",
+  "labels": ["area:backend"],
+  "idempotency_key": null
+}

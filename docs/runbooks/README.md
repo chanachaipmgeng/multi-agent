@@ -11,6 +11,7 @@ Design checklist **E14** requires: tunnel down, agent stuck, token rotation, res
 | Bad agent MR | incident / rollback | [rollback-mr.md](rollback-mr.md) |
 | Alerts (ops) | (supporting) | [alerts.md](alerts.md) |
 | Weekly log review | D4.7 go-live | [weekly-log-review.md](weekly-log-review.md) |
+| Trace by event UUID | (supporting) | [trace-by-event.md](trace-by-event.md) |
 | Audit export (object lock) | D4.4 prep | [audit-export.md](audit-export.md) |
 | Ingress Access/WAF checklist | D4.3 prep | generated: `cloudflared/access-and-waf.md` via `make ingress-render` |
 

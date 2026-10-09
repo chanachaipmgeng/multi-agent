@@ -334,7 +334,9 @@ class MemoryTaskStore:
             decision = row.get("decision")
             if status == "pending" and decision is not None:
                 continue
-            if status and status != "pending" and decision != status:
+            if status == "decided" and decision is None:
+                continue
+            if status and status not in ("pending", "decided") and decision != status:
                 continue
             item = await self.get_approval(nonce)
             if item:
@@ -612,6 +614,8 @@ class PostgresTaskStore:
             clauses.append(f"task_id = ${len(args)}")
         if status == "pending":
             clauses.append("decision IS NULL")
+        elif status == "decided":
+            clauses.append("decision IS NOT NULL")
         elif status:
             args.append(status)
             clauses.append(f"decision = ${len(args)}")

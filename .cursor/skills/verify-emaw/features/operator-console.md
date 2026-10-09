@@ -28,8 +28,28 @@ curl -fsS -H "Authorization: Bearer $HERMES_API_KEY" \
   "$GATEWAY_URL/internal/control/status" | tee evidence/control-status.json
 ```
 
-4. If console profile is up: `curl -fsS -o /dev/null -w "%{http_code}" http://127.0.0.1:${CONSOLE_PORT:-8088}/` → `200`.
+4. Audit + approvals list (status filters used by console Audit / History tabs):
+
+```bash
+curl -fsS -H "Authorization: Bearer $HERMES_API_KEY" \
+  -H "X-EMAW-User-Id: ${VERIFY_EMAW_USER_ID:-987654321}" \
+  "$GATEWAY_URL/internal/approvals?status=pending" | tee evidence/approvals-pending.json
+curl -fsS -H "Authorization: Bearer $HERMES_API_KEY" \
+  -H "X-EMAW-User-Id: ${VERIFY_EMAW_USER_ID:-987654321}" \
+  "$GATEWAY_URL/internal/approvals?status=decided" | tee evidence/approvals-decided.json
+# Audit requires task_id or trace_id — use a known id from list-tasks if available:
+TASK_ID=$(curl -fsS -H "Authorization: Bearer $HERMES_API_KEY" \
+  -H "X-EMAW-User-Id: ${VERIFY_EMAW_USER_ID:-987654321}" \
+  "$GATEWAY_URL/internal/tasks?limit=1" | python3 -c "import sys,json; t=json.load(sys.stdin).get('tasks') or []; print(t[0]['task_id'] if t else '')")
+if [ -n "$TASK_ID" ]; then
+  curl -fsS -H "Authorization: Bearer $HERMES_API_KEY" \
+    -H "X-EMAW-User-Id: ${VERIFY_EMAW_USER_ID:-987654321}" \
+    "$GATEWAY_URL/internal/audit?task_id=$TASK_ID" | tee evidence/audit.json
+fi
+```
+
+5. If console profile is up: `curl -fsS -o /dev/null -w "%{http_code}" http://127.0.0.1:${CONSOLE_PORT:-8088}/` → `200`.
 
 ## Pass
 
-- Steps 1–3 succeed; step 4 only when `operator-console` is running.
+- Steps 1–4 succeed (step 4 audit only when ≥1 task exists); step 5 only when `operator-console` is running.
