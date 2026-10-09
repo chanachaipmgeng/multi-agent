@@ -35,7 +35,7 @@ Everything is auditable · Grow in phases
 |---|---|
 | `docker-compose.yml` | platform + `router` + 5 role adapters + MinIO; profiles `agents`, `ingress`, `onprem-llm`, `socraticode`, `console`, `single` (legacy) |
 | `docker-compose.local-free.yml` | all 6 agents → `inference-ollama` (`make up-local-free`, DECISION-15) |
-| Air-gap pack | `make pack-offline` / `load-offline` / `up-offline` — [`docs/offline-airgap.md`](docs/offline-airgap.md) |
+| Air-gap pack | phases A–F in [`docs/offline-airgap.md`](docs/offline-airgap.md); `preflight-offline` / `offline-acceptance` / `pack-offline` |
 | `docker-compose.prod.yml` | Linux VM override (`make up-prod`) |
 | `webhook-gateway/` | GitLab + GitHub webhooks + `/internal/*` control plane (tasks, approvals, pause/safe-mode, projects, audit) + RBAC |
 | `queue-adapter/` | `MODE=router\|worker` — fan-out, HANDOFF parse, `ScmClient` enrich, breaker, MinIO upload, `/metrics` |

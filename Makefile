@@ -111,6 +111,15 @@ load-offline: ## load PACK=offline-pack/<ts> (images + volumes) on air-gap host
 sync-local-llm: ## write LOCAL_LLM_MODEL into hermes-data/*/config.local-free.yaml
 	@scripts/sync-local-llm-model.sh
 
+preflight-offline: ## air-gap readiness (env/disk) or PACK=offline-pack/<ts> verify
+	@scripts/preflight-offline.sh
+
+offline-acceptance: ## green check after up-offline (local-free + console + obs + simulate-operator)
+	@REQUIRE_CONSOLE=$${REQUIRE_CONSOLE:-1} REQUIRE_OBS=$${REQUIRE_OBS:-1} scripts/offline-acceptance.sh
+
+warm-socraticode-npm: ## pre-warm reviewer npx socraticode cache (required before pack)
+	@scripts/warm-socraticode-npm.sh
+
 restart-adapters: ## recreate router + role adapters (keeps ADAPTER_DISPATCHER from .env; default hermes_api)
 	ADAPTER_DISPATCHER=$${ADAPTER_DISPATCHER:-hermes_api} $(COMPOSE_LOCAL_FREE) up -d --force-recreate \
 		router adapter-dev-frontend adapter-dev-backend adapter-reviewer adapter-qa adapter-devops
@@ -244,4 +253,4 @@ skill-accept-sandbox: ## ≥3 sandbox-smoke skill-acceptance drills (needs emaw-
 test-scripts: ## render-ingress unit tests (needs PyYAML)
 	@$(PY) -m pytest -q scripts/test_render_ingress.py
 
-.PHONY: help prereqs bootstrap venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-console up-socraticode socraticode-check up-local-free up-offline pack-offline load-offline sync-local-llm restart-adapters up-cloud dev-flow-live local-llm-pull local-free-check preflight ingress-render audit-export audit-verify up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate dev-tunnel tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration test-scripts lint gitleaks webhook-test simulate-operator verify-phase0 skill-accept-sandbox
+.PHONY: help prereqs bootstrap venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-console up-socraticode socraticode-check up-local-free up-offline pack-offline load-offline sync-local-llm preflight-offline offline-acceptance warm-socraticode-npm restart-adapters up-cloud dev-flow-live local-llm-pull local-free-check preflight ingress-render audit-export audit-verify up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate dev-tunnel tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration test-scripts lint gitleaks webhook-test simulate-operator verify-phase0 skill-accept-sandbox

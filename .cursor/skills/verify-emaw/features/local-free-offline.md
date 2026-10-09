@@ -26,8 +26,14 @@ Preconditions:
 
 - `make up-local-free` (or `up-offline`) completed; model pulled or restored from pack.
 
-- **Smoke.** Run `bash .cursor/skills/verify-emaw/bin/verify-emaw.sh drive local-free-offline`.
-- **Proof.** `evidence/<RUN_ID>/local-free-check.txt` ends with success (script exit 0); optional `console-http.txt` shows `200`.
+Primary operator proof after migrate (Phase F):
+
+```bash
+make offline-acceptance
+```
+
+- **Smoke (skill helper).** Run `bash .cursor/skills/verify-emaw/bin/verify-emaw.sh drive local-free-offline`.
+- **Proof.** `make offline-acceptance` prints `PASSED`; or `evidence/<RUN_ID>/local-free-check.txt` exit 0 and optional `console-http.txt` shows `200`.
 
 ## Gotchas
 

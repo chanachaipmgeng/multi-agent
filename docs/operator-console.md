@@ -14,6 +14,9 @@ make up-console
 # air-gap one-shot: make up-offline  (local-free + console + observability)
 ```
 
+Compose runs nginx with `read_only` + tmpfs; `cap_add` includes `CHOWN`/`SETUID`/`SETGID` so the
+stock entrypoint can prepare cache dirs (otherwise the container crash-loops).
+
 Local vite (dev):
 
 ```bash

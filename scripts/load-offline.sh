@@ -57,6 +57,16 @@ if [ -f "$PACK/manifest.json" ]; then
 import hashlib, json, sys
 from pathlib import Path
 
+def sha256_file(path: Path, chunk: int = 8 * 1024 * 1024) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        while True:
+            buf = fh.read(chunk)
+            if not buf:
+                break
+            h.update(buf)
+    return h.hexdigest()
+
 pack = Path(sys.argv[1])
 manifest = json.loads((pack / "manifest.json").read_text(encoding="utf-8"))
 sha = manifest.get("sha256") or {}
@@ -67,8 +77,8 @@ for rel, expect in sha.items():
         print(f"WARN: missing file from manifest: {rel}")
         bad += 1
         continue
-    got = hashlib.sha256(path.read_bytes()).hexdigest()
-    if got != expect:
+    print(f"verify {rel}", flush=True)
+    if sha256_file(path) != expect:
         print(f"FAIL: sha256 mismatch {rel}")
         bad += 1
 if bad:

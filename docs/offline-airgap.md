@@ -1,149 +1,207 @@
 # Offline / air-gap pack (Precision 7920 class)
 
 Run EMAW **local-free** (DECISION-15) on a Linux host with **no internet after install**:
-local Ollama LLM, Operator Console HITL, optional observability. Do **not** use
-`make up-prod` (that path expects OpenRouter + Cloudflare tunnel).
+local Ollama LLM, Operator Console HITL, observability. Do **not** use `make up-prod`
+(that path expects OpenRouter + Cloudflare tunnel).
 
-Reference host (example): Dell Precision 7920 Rack — Ubuntu 26.04, 2× Xeon Gold 6234,
+Reference host: Dell Precision 7920 Rack — Ubuntu 26.04, 2× Xeon Gold 6234,
 ~436 GiB RAM, 2× Quadro RTX 5000 (16 GB VRAM each), ~1.5 TiB disk, LAN e.g. `10.50.0.117/24`.
 
-DECISION-2 documents Ubuntu **24.04**; 26.04 is fine if Docker Engine + NVIDIA Container
-Toolkit install and `nvidia-smi` / a GPU container smoke test succeed.
+DECISION-2 documents Ubuntu **24.04**; 26.04 is fine after Docker Engine + NVIDIA Container
+Toolkit install and the GPU smokes in Phase E pass.
 
-## Who does what
+**Server defaults:** copy knobs from [`config/env.offline-server.example`](../config/env.offline-server.example)
+(`LOCAL_LLM_MODEL=qwen2.5-coder:14b`, fallback `7b`).
 
-| Step | Repo / packer (has network) | Operator on air-gap host |
+---
+
+## Migration phases (green before you move)
+
+| Phase | Where | Must have (green) |
 |---|---|---|
-| Clone EMAW, fill `.env` / secrets | yes | copy age key + `.env.enc` or run `secrets-dev` from transferred secrets |
-| Install Docker + NVIDIA toolkit | — | **required on host** |
-| `make pack-offline` (images + model volumes + npm cache) | yes | — |
-| Move `offline-pack/<ts>/` (USB / LAN) | yes | receive tarball directory |
-| `make load-offline PACK=…` | — | yes |
-| `make up-offline` + smoke checks | — | yes |
-| Telegram / Cloudflare / GitLab.com | — | needs network or LAN SCM; otherwise use Console / API only |
+| **A — Prep** | pack host (has network) | `.env` from server example, `secrets-dev`, `rbac.yaml`, ≥80 GiB free disk |
+| **B — Prove** | pack host | `up-local-free` + pull **14b** (or note exception) + embed + `warm-socraticode-npm` → `make offline-acceptance` **PASS** |
+| **C — Pack** | pack host | `make pack-offline` → `PACK=… make preflight-offline` **PASS** |
+| **D — Transfer kit** | USB / LAN | repo tree + `offline-pack/<ts>/` + age key (separate channel) |
+| **E — Host prep** | Precision 7920 | Docker + NVIDIA toolkit; `nvidia-smi` + GPU container smoke |
+| **F — Load & accept** | 7920 | `load-offline` → `up-offline` → `make offline-acceptance` **PASS** |
+
+Do **not** start Phase D until A–C are green. Production pack for this server **must** include
+`qwen2.5-coder:14b` (dev laptops may prove with 7b only if GPU-limited — rebuild pack on a
+host that can pull 14b before transfer).
+
+### Who does what
+
+| Work | Pack host (repo / network) | Operator on 7920 |
+|---|---|---|
+| Clone / fill secrets | yes | receive age key + kit; `secrets-dev` or decrypt |
+| Install Docker + NVIDIA | — | **required (sudo)** |
+| Prove + pack | `offline-acceptance` then `pack-offline` | — |
+| Transfer kit | create / ship | receive |
+| Load + `up-offline` | — | yes |
+| Telegram / Cloudflare / SaaS SCM | — | needs network or LAN SCM; else Console/API only |
+
+---
 
 ## Model sizing (dual RTX 5000, 16 GB ×2)
 
 Hermes ≥0.21 needs **≥64K** context (`OLLAMA_CONTEXT_LENGTH` + `model.ollama_num_ctx`).
-KV-cache at 64K uses extra VRAM on top of weights.
 
 | Tier | `LOCAL_LLM_MODEL` | Approx. weights | Fit |
 |---|---|---|---|
-| Baseline | `qwen2.5-coder:7b` | ~4–5 GB | One GPU; shared queue for 6 agents |
-| **Recommended on 7920** | `qwen2.5-coder:14b` | ~8–10 GB + KV | One GPU; second GPU free for headroom |
-| High quality | `qwen2.5-coder:32b` (Q4) | ~18–20 GB | Both GPUs (Ollama layer split) and/or RAM offload |
-| Experimental | ~70B Q3–Q4 | ~35–40 GB+ | Heavy RAM offload; high latency — not default |
+| Baseline | `qwen2.5-coder:7b` | ~4–5 GB | Dev prove / fallback |
+| **7920 default** | `qwen2.5-coder:14b` | ~8–10 GB + KV | One GPU |
+| High quality | `qwen2.5-coder:32b` (Q4) | ~18–20 GB | Both GPUs / RAM offload |
+| Experimental | ~70B Q3–Q4 | ~35–40 GB+ | Heavy RAM offload — not default |
 
-On the server set in `.env` (dev laptops can keep 7b):
+`make hermes-seed` / `up-local-free` / `up-offline` run `scripts/sync-local-llm-model.sh`.
+
+GPU: local-free compose already sets NVIDIA `count: all`. Bare `onprem-llm` has **no** GPU
+stanza — always use local-free / `up-offline`.
+
+---
+
+## Phase A — Prep (pack host)
 
 ```bash
-LLM_MODE=local
-LOCAL_LLM_MODEL=qwen2.5-coder:14b
-LOCAL_LLM_FALLBACK=qwen2.5-coder:7b   # optional; defaults to LOCAL_LLM_MODEL
+cp -n config/env.offline-server.example .env   # or merge into existing .env
+# Ensure: LLM_MODE=local, LOCAL_LLM_MODEL=qwen2.5-coder:14b, SECRET_HERMES_API_KEY=…
+make secrets-dev
+cp -n config/rbac.example.yaml config/rbac.yaml
+df -h .   # aim ≥80 GiB free for 14b pack
+make preflight-offline          # stack may still be down — checks secrets/env/disk/docker
 ```
 
-`make hermes-seed` / `up-local-free` / `up-offline` run `scripts/sync-local-llm-model.sh` so
-all six `hermes-data/*/config.local-free.yaml` match those env vars.
+---
 
-Also pull embeddings once while packing: `nomic-embed-text` into `socraticode-ollama`.
-
-## GPU modes
-
-- **A (default):** one `inference-ollama` with `deploy.resources…nvidia count: all` (already in
-  [`docker-compose.local-free.yml`](../docker-compose.local-free.yml)).
-- **B (later):** give `socraticode-ollama` its own GPU reservation if embedding load matters.
-  Do not share the confidential LLM volume with the embedding store (DECISION-6).
-
-Bare profile `onprem-llm` has **no** NVIDIA stanza — always use local-free / `up-offline`.
-
-## Pack (machine with network)
-
-Prerequisites: Docker, compose v2, enough disk for images + models (plan ~20–80 GB by tier).
+## Phase B — Prove (pack host)
 
 ```bash
-cp -n .env.example .env
-# set SECRET_HERMES_API_KEY, LOCAL_LLM_MODEL=…, LLM_MODE=local
-make secrets-dev
 make up-local-free
-make local-llm-pull                          # LOCAL_LLM_MODEL
+make local-llm-pull                           # pulls LOCAL_LLM_MODEL (14b)
 docker exec socraticode-ollama ollama pull nomic-embed-text
-# Optional: warm SocratiCode npm cache (first reviewer MCP spawn), then:
+make warm-socraticode-npm                     # required before air-gap pack
+make up-console && make up-observability      # or: make up-offline
+make offline-acceptance                       # MUST pass (REQUIRE_CONSOLE=1)
+# optional: bash .cursor/skills/verify-emaw/bin/verify-emaw.sh drive local-free-offline
+```
+
+If the pack host cannot pull/run 14b, prove with 7b for tooling only, then rebuild Phase B–C
+on a GPU host that holds 14b before shipping to 7920.
+
+---
+
+## Phase C — Pack
+
+```bash
 make pack-offline
 # → offline-pack/<UTC-ts>/{images.tar, volumes/*.tar.gz, manifest.json, …}
+PACK=offline-pack/<ts> make preflight-offline   # MUST pass
 ```
 
-`pack-offline` builds/pulls compose images, `docker save`s them, and tars:
+Pack contents: chat models (`ollama-data`), SocratiCode ollama/qdrant volumes, reviewer npm
+cache (`hermes-reviewer-data`), digest-pinned images.
 
-- `ollama-data` (chat models)
-- `socraticode_ollama_data` / `socraticode_qdrant_data` (external volume names)
-- `hermes-reviewer-data` (npm/`npx` SocratiCode cache when present)
+---
 
-Override output: `PACK_DIR=… make pack-offline`.
+## Phase D — Transfer kit
 
-## Load + run (air-gap host)
+Ship **all** of:
 
-### 1. Host prep (operator)
+| Item | Notes |
+|---|---|
+| EMAW git tree | `git clone` / `rsync` / `git archive` — same commit as pack |
+| `offline-pack/<ts>/` | entire directory (`images.tar` is large) |
+| Age private key | **separate channel** from the pack (USB + encrypted share, etc.) |
+| Notes | packed `LOCAL_LLM_MODEL`, pack path, commit SHA |
+
+Do not commit secrets or `offline-pack/` (gitignored).
+
+---
+
+## Phase E — Host prep (Precision 7920 — operator)
+
+Requires sudo. Outline (follow current Ubuntu NVIDIA / Docker docs for your release):
 
 ```bash
-# Docker Engine + Compose plugin (official docs for your Ubuntu)
+# 1) Docker Engine + Compose plugin (official Docker docs for Ubuntu)
 sudo usermod -aG docker "$USER"   # re-login
 
-# NVIDIA driver + Container Toolkit — then:
+# 2) NVIDIA driver + nvidia-container-toolkit (NVIDIA docs)
 nvidia-smi
-# smoke: docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
+# Expect both Quadro RTX 5000 visible
+
+# 3) GPU in containers
+docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
 ```
 
-### 2. Transfer + load
+If step 3 fails, fix toolkit/`nvidia-ctk runtime configure --runtime=docker` before Phase F.
+
+---
+
+## Phase F — Load & accept (7920)
 
 ```bash
-# After copying offline-pack/<ts> onto the host (and cloning/copying the EMAW repo):
+cd /path/to/emaw
+# Place offline-pack/<ts> next to the repo (or set PACK= absolute path)
 make load-offline PACK=offline-pack/<ts>
-# or: PACK_DIR=/path/to/offline-pack/<ts> make load-offline
-```
-
-### 3. Secrets + bring-up
-
-```bash
-cp -n .env.example .env
-# LLM_MODE=local, LOCAL_LLM_MODEL=qwen2.5-coder:14b (or whatever was packed)
-make secrets-dev   # or secrets-decrypt with offline age key
+cp -n config/env.offline-server.example .env   # match packed LOCAL_LLM_MODEL
+make secrets-dev                               # or: make secrets-decrypt
 cp -n config/rbac.example.yaml config/rbac.yaml
-make up-offline    # local-free + Operator Console + observability
-make local-free-check && make phase3-check
+make up-offline
+make offline-acceptance                        # MUST pass before production use
 ```
 
-Console: http://127.0.0.1:8088 — HITL without Telegram.  
-Grafana: http://127.0.0.1:3000 after observability profile is up.
+- Console: http://127.0.0.1:8088 (primary HITL — no Telegram)
+- Grafana: http://127.0.0.1:3000
 
-Host ports stay on loopback by default. For LAN-only access, put a reverse proxy / VPN in
-front; do not expose raw compose ports without auth.
+Ports stay on loopback. For LAN access use VPN or an authenticated reverse proxy — do not
+publish raw compose ports.
+
+### Operator-only checklist (cannot be done from the repo)
+
+- [ ] sudo / install Docker + NVIDIA stack (Phase E)
+- [ ] Physically transfer kit (USB/SCP)
+- [ ] Age key delivered out-of-band
+- [ ] `offline-acceptance` green on 7920
+- [ ] Optional: LAN proxy for Console
+
+---
 
 ## What “100% offline” covers
 
 | Capability | Offline? |
 |---|---|
-| Platform + 6 agents + local LLM + SocratiCode infra | yes (after pack/load) |
-| Operator Console approvals / control | yes |
-| Observability (Grafana/Prometheus/Loki) | yes (Alertmanager Telegram needs chat + network) |
-| Telegram bot HITL | no (needs internet) |
-| Cloudflare tunnel | no — skip `ingress` |
-| GitLab.com / GitHub.com webhooks & API | no unless SCM is on LAN |
-| Image/model updates | re-pack on a networked machine; no auto-update |
+| Platform + 6 agents + local LLM + SocratiCode | yes (after pack/load) |
+| Operator Console / `simulate-operator` | yes |
+| Observability (Grafana/Prometheus/Loki) | yes (Alertmanager→Telegram needs network) |
+| Telegram / Cloudflare tunnel | no |
+| GitLab.com / GitHub.com | no unless SCM on LAN |
+| Image/model updates | re-pack on a networked host |
 
-Hybrid `llm_backend` in `projects.yaml` (DECISION-3) is **policy metadata** today — it does
-not auto-switch providers per task. Offline mode is the blunt switch: all six agents → Ollama.
+---
 
 ## Ops after go-live
 
 ```bash
-make backup BACKUP_OLLAMA=1          # include ollama-data
+make backup BACKUP_OLLAMA=1
 make restore-drill BACKUP=backups/<ts>
 ```
 
-Operator proof (Cursor skill):  
-`bash .cursor/skills/verify-emaw/bin/verify-emaw.sh drive local-free-offline`  
-— see [`.cursor/skills/verify-emaw/features/local-free-offline.md`](../.cursor/skills/verify-emaw/features/local-free-offline.md).
+Proofs: `make offline-acceptance` or  
+`bash .cursor/skills/verify-emaw/bin/verify-emaw.sh drive local-free-offline`
 
-See [`deploy-linux-vm.md`](deploy-linux-vm.md) for the cloud+tunnel prod path (different from this doc).
+Skills: promote from `skills/` via `make skills-sync` only.
 
-Skills for Hermes agents still promote from `skills/` via `make skills-sync` (never edit `hermes-data/*/skills` as source of truth).
+Cloud+tunnel prod path: [`deploy-linux-vm.md`](deploy-linux-vm.md) (different from this doc).
+
+---
+
+## Pack-host prove notes (this repo)
+
+| Date (UTC) | Host | Model packed | Result |
+|---|---|---|---|
+| 2026-10-09 | Windows pack host (Docker Desktop) | `qwen2.5-coder:7b` | `offline-acceptance` **PASSED**; pack `offline-pack/20261009T180801Z` + `preflight-offline PACK` **OK** (images ~5.3G + volumes). Disk ~40 GiB free — **did not pull 14b**. Rebuild Phase B–C with `LOCAL_LLM_MODEL=qwen2.5-coder:14b` on the 7920 (or any host with GPU + disk) before production transfer. Also fixed Operator Console nginx under `read_only` (`cap_add` CHOWN/SETUID/SETGID) so `:8088` stays up. |
+
+If GPU/VRAM/disk on the pack host is insufficient for 14b, prove with 7b as above, then rebuild
+the pack on a capable host before Phase D.

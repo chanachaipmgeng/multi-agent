@@ -725,8 +725,13 @@ services:
     depends_on: [webhook-gateway]
     profiles: ["console"]
     read_only: true
-    tmpfs: ["/var/cache/nginx", "/var/run", "/tmp"]
+    tmpfs:
+      - /var/cache/nginx:mode=1777
+      - /var/run:mode=1777
+      - /tmp:mode=1777
+    # nginx entrypoint + master chown worker cache dirs under read_only/tmpfs.
     cap_drop: ["ALL"]
+    cap_add: ["CHOWN", "SETUID", "SETGID", "NET_BIND_SERVICE", "DAC_OVERRIDE"]
     security_opt: ["no-new-privileges:true"]
     restart: unless-stopped
 

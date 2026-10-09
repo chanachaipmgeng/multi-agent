@@ -125,11 +125,22 @@ out = Path(sys.argv[1])
 ts, model = sys.argv[2], sys.argv[3]
 image_names = sys.argv[4:]
 
+def sha256_file(path: Path, chunk: int = 8 * 1024 * 1024) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        while True:
+            buf = fh.read(chunk)
+            if not buf:
+                break
+            h.update(buf)
+    return h.hexdigest()
+
 sha = {}
 for f in sorted(out.rglob("*")):
     if f.is_file() and f.name != "manifest.json":
         rel = f.relative_to(out).as_posix()
-        sha[rel] = hashlib.sha256(f.read_bytes()).hexdigest()
+        print(f"hashing {rel} …", flush=True)
+        sha[rel] = sha256_file(f)
 
 images = {}
 for img in image_names:
