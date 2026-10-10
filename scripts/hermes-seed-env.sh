@@ -35,6 +35,8 @@ write_env() {
     grep -q '^API_SERVER_KEY=' "$dest" && sed -i.bak '/^API_SERVER_KEY=/d' "$dest" && rm -f "${dest}.bak"
     printf 'API_SERVER_KEY=%s\n' "$api" >> "$dest"
   fi
+  # Container Hermes UID != host author; bind-mount must be world-readable.
+  chmod 644 "$dest"
   echo "wrote $dest"
 }
 
@@ -132,5 +134,9 @@ if [ "${LLM_MODE:-cloud}" = "local" ]; then
     bash "$ROOT/scripts/sync-local-llm-model.sh"
   fi
 fi
+
+for agent in coordinator dev-frontend dev-backend reviewer devops qa; do
+  chmod 644 "hermes-data/$agent/.env" 2>/dev/null || true
+done
 
 echo "Hermes .env files ready. Ensure TELEGRAM_ALLOWED_USERS is set for coordinator."

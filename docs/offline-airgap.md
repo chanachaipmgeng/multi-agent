@@ -141,6 +141,13 @@ If step 3 fails, fix toolkit/`nvidia-ctk runtime configure --runtime=docker` bef
 
 ## Phase F — Load & accept (7920)
 
+**Preferred when the host can reach Hub/Ollama:** clone the repo, set
+`LOCAL_LLM_MODEL=qwen2.5-coder:14b`, `make secrets-dev`, `make up-offline`,
+`make local-llm-pull`, pull `nomic-embed-text`, `make warm-socraticode-npm`, then
+`make offline-acceptance`.
+
+**Air-gap pack path** (no outbound pulls):
+
 ```bash
 cd /path/to/emaw
 # Place offline-pack/<ts> next to the repo (or set PACK= absolute path)
@@ -153,9 +160,15 @@ make offline-acceptance                        # MUST pass before production use
 ```
 
 - Console: http://127.0.0.1:8088 (primary HITL — no Telegram)
-- Grafana: http://127.0.0.1:3000
+- Grafana: http://127.0.0.1:${GRAFANA_PORT:-3000} — if another stack owns `:3000`, set
+  `GRAFANA_PORT=3030` in `.env` (`offline-acceptance` honors `GRAFANA_PORT`)
+- MinIO: if Hub denies `minio/minio`, `docker save`/`load` the digest-pinned image from a
+  pack host and set `MINIO_IMAGE=minio/minio:<local-tag>` (compose `--pull never` if needed)
+- Hermes: `make secrets-dev` / `hermes-seed-env` writes `hermes-data/*/.env` mode `644` so the
+  container UID can read the bind mount
 
-Ports stay on loopback. For LAN access use VPN or an authenticated reverse proxy — do not
+Ports stay on loopback. For LAN Console access prefer SSH tunnel
+(`ssh -L 8088:127.0.0.1:8088 user@host`) or an authenticated reverse proxy — do not
 publish raw compose ports.
 
 ### Operator-only checklist (cannot be done from the repo)
@@ -202,6 +215,7 @@ Cloud+tunnel prod path: [`deploy-linux-vm.md`](deploy-linux-vm.md) (different fr
 | Date (UTC) | Host | Model packed | Result |
 |---|---|---|---|
 | 2026-10-09 | Windows pack host (Docker Desktop) | `qwen2.5-coder:7b` | `offline-acceptance` **PASSED**; pack `offline-pack/20261009T180801Z` + `preflight-offline PACK` **OK** (images ~5.3G + volumes). Disk ~40 GiB free — **did not pull 14b**. Rebuild Phase B–C with `LOCAL_LLM_MODEL=qwen2.5-coder:14b` on the 7920 (or any host with GPU + disk) before production transfer. Also fixed Operator Console nginx under `read_only` (`cap_add` CHOWN/SETUID/SETGID) so `:8088` stays up. |
+| 2026-10-10 | Precision 7920 (`10.50.0.117`, Ubuntu, 2× RTX 5000) | `qwen2.5-coder:14b` (online pull) + `nomic-embed-text` | `offline-acceptance` **PASSED** on host (`up-offline` + console + observability). Notes: Docker Hub anonymous pull of `minio/minio` denied — loaded image via `docker save`/`load` from pack host and set `MINIO_IMAGE=minio/minio:emaw-offline`; host `:3000` taken by `open-webui` → `GRAFANA_PORT=3030`; Hermes bind-mount `.env` needed `chmod 644` (container UID). Console `127.0.0.1:8088`. |
 
 If GPU/VRAM/disk on the pack host is insufficient for 14b, prove with 7b as above, then rebuild
 the pack on a capable host before Phase D.

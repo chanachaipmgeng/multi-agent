@@ -58,9 +58,10 @@ fi
 echo "-- observability --"
 if curl -fsS --max-time 5 http://127.0.0.1:9090/-/healthy >/dev/null 2>&1; then
   pass "prometheus healthy"
-  if curl -fsS --max-time 5 http://127.0.0.1:3000/login >/dev/null 2>&1 \
-     || curl -fsS --max-time 5 -o /dev/null -w '' http://127.0.0.1:3000/ 2>/dev/null; then
-    pass "grafana reachable"
+  _gf_port="${GRAFANA_PORT:-3000}"
+  if curl -fsS --max-time 5 "http://127.0.0.1:${_gf_port}/login" >/dev/null 2>&1 \
+     || curl -fsS --max-time 5 -o /dev/null -w '' "http://127.0.0.1:${_gf_port}/" 2>/dev/null; then
+    pass "grafana reachable (:${_gf_port})"
   elif [ "$REQUIRE_OBS" = "1" ]; then
     fail "grafana not reachable"
   fi

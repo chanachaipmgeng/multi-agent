@@ -59,6 +59,10 @@ backups/
 # --- air-gap image/model packs (docs/offline-airgap.md) ----------------------
 offline-pack/
 
+# --- one-off remote install helpers (passwords via env only; do not commit) ---
+scripts/_remote_*
+.tmp-minio.tar
+
 # --- misc --------------------------------------------------------------------
 *.log
 .DS_Store
