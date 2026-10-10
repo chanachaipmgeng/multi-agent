@@ -7,6 +7,7 @@ Last updated: **2026-10-11** (UTC date context: install + Console LAN bind).
 | Item | Value |
 |---|---|
 | Host | `10.50.0.117` (Ubuntu, 2× RTX 5000) |
+| Install path | **`/opt/emaw`** (`COMPOSE_PROJECT_NAME=emaw`; was `/home/myhr/emaw`) |
 | Stack | `make up-lan` semantics: local-free + console + observability |
 | LLM | `LLM_MODE=local` · `qwen2.5-coder:14b` + `nomic-embed-text` (not OpenRouter) |
 | Console | `CONSOLE_BIND=0.0.0.0` → **http://10.50.0.117:8088** |
@@ -23,6 +24,7 @@ Prove notes: [offline-airgap.md](offline-airgap.md) pack-host table. Environment
 - 7920 host prep, online pull 14b, `offline-acceptance` PASSED
 - Blueprint dashboard gaps → Console (Dispatch, Kanban, approval `comment`) — not a second SPA
 - LAN hybrid: `CONSOLE_BIND` + `make up-lan` + docs/skills/rules
+- Host install path moved to `/opt/emaw` (volumes `emaw_*` preserved)
 
 ## Next work (priority order)
 
@@ -67,6 +69,8 @@ Do not code until a DECISION note exists.
 
 ```bash
 # On 7920
+cd /opt/emaw
+set -a && source .env && set +a   # so LOCAL_LLM_MODEL=14b is seen by checks
 make local-free-check
 make offline-acceptance          # honors GRAFANA_PORT
 curl -fsS -o /dev/null -w '%{http_code}\n' http://10.50.0.117:8088/

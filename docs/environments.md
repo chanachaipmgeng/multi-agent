@@ -22,8 +22,9 @@
 Online host that still runs **local Ollama** (not `up-prod` / OpenRouter):
 
 ```bash
+# 7920 standard path: /opt/emaw  (COMPOSE_PROJECT_NAME=emaw)
 # .env: LLM_MODE=local, LOCAL_LLM_MODEL=qwen2.5-coder:14b, CONSOLE_BIND=0.0.0.0
-make up-lan
+cd /opt/emaw && make up-lan
 # → http://<host-lan-ip>:8088
 # Prefer: ufw allow from <LAN_CIDR> to any port 8088
 ```
