@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api, type TaskRow } from "../api";
 import { useAuth } from "../auth";
 
@@ -16,11 +16,17 @@ const BOARD_COLUMNS: { key: string; states: string[] }[] = [
 
 export function TasksPage() {
   const { session } = useAuth();
+  const [searchParams] = useSearchParams();
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [project, setProject] = useState("");
-  const [state, setState] = useState("");
+  const [state, setState] = useState(() => searchParams.get("state") || "");
   const [view, setView] = useState<View>("table");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fromUrl = searchParams.get("state") || "";
+    setState(fromUrl);
+  }, [searchParams]);
 
   async function load() {
     if (!session) return;
@@ -39,7 +45,7 @@ export function TasksPage() {
 
   useEffect(() => {
     void load();
-  }, [session, view]);
+  }, [session, view, state, project]);
 
   const columns = useMemo(() => {
     const map = new Map<string, TaskRow[]>();

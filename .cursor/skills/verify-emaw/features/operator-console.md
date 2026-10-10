@@ -1,7 +1,7 @@
 # Feature: Operator Console (DECISION-20)
 
 Prove the thin console APIs and optional compose profile without requiring a browser.
-Includes Dispatch (`POST /internal/tasks`) used by the Console Dispatch page.
+Includes Dispatch (`POST /internal/tasks`) and Home summary (`GET /internal/ops/summary`).
 
 ## Preconditions
 
@@ -65,6 +65,16 @@ curl -fsS -H "Authorization: Bearer $HERMES_API_KEY" \
 
 Expect `"status":"queued"` and a `task_id`. Or: `make simulate-operator CMD=create-task`.
 
+7. Home ops summary (Console Home page):
+
+```bash
+curl -fsS -H "Authorization: Bearer $HERMES_API_KEY" \
+  -H "X-EMAW-User-Id: ${VERIFY_EMAW_USER_ID:-987654321}" \
+  "$GATEWAY_URL/internal/ops/summary" | tee evidence/ops-summary.json
+```
+
+Expect `gateway.status` = `ok`, keys `approvals_pending`, `tasks_by_state`, `tasks_recent`, `control`.
+
 ## Pass
 
-- Steps 1–4 succeed (step 4 audit only when ≥1 task exists); step 5 when `operator-console` is running; step 6 when proving Dispatch.
+- Steps 1–4 succeed (step 4 audit only when ≥1 task exists); step 5 when `operator-console` is running; step 6 when proving Dispatch; step 7 when proving Home.

@@ -16,7 +16,8 @@ Last updated: **2026-10-11** (UTC date context: install + Console LAN bind).
 | Telegram | **not enabled** (checklist in [operator-console.md](operator-console.md)) |
 | Cloudflare / `up-prod` | **not used** |
 
-Prove notes: [offline-airgap.md](offline-airgap.md) pack-host table. Environments: [environments.md](environments.md) column **LAN + local LLM**.
+Prove notes: [offline-airgap.md](offline-airgap.md) pack-host table. Environments: [environments.md](environments.md) column **LAN + local LLM**.  
+Operator surfaces guide (TH): [operator-handbook.md](operator-handbook.md).
 
 ## Done recently (do not re-plan)
 
@@ -60,7 +61,7 @@ Do not code until a DECISION note exists.
 
 ### P4 — Optional later
 
-- Bind Grafana to LAN (or reverse proxy) if operators need it without SSH
+- Bind MinIO/Prometheus to LAN (or reverse proxy) if needed — Grafana + Hermes dashboard already follow `CONSOLE_BIND`
 - LAN GitLab/GitHub webhooks → gateway `:8700` (still prefer loopback + reverse proxy)
 - Re-pack 14b offline kit from 7920 for true air-gap transfer hosts
 - Staging/prod cloud path remains [`deploy-linux-vm.md`](deploy-linux-vm.md) + `up-prod` (separate from this host)

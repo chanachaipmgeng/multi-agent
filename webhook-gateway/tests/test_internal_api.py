@@ -315,6 +315,17 @@ async def test_console_apis_approvals_projects_audit_control(client) -> None:
     assert users.status_code == 200
     assert users.json()["count"] >= 1
 
+    summary = await ac.get("/internal/ops/summary", headers=_headers(111))
+    assert summary.status_code == 200
+    body = summary.json()
+    assert body["gateway"]["status"] == "ok"
+    assert body["approvals_pending"] >= 1
+    assert "IN_PROGRESS" in body["tasks_by_state"] or "AWAITING_APPROVAL" in body[
+        "tasks_by_state"
+    ]
+    assert any(t["task_id"] == "t-console-1" for t in body["tasks_recent"])
+    assert "devops" in body["control"]["paused_agents"]
+
 
 async def test_operator_fixture_create_and_approval_history(client) -> None:
     """API-only drill path used by scripts/simulate-operator.sh (no Telegram)."""

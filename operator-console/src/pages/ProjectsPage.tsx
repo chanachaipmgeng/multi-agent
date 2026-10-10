@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type ProjectRow } from "../api";
 import { useAuth } from "../auth";
-
-const GRAFANA = import.meta.env.VITE_GRAFANA_URL || "http://127.0.0.1:3000";
+import { grafanaBaseUrl } from "../opsLinks";
 
 export function ProjectsPage() {
   const { session } = useAuth();
@@ -51,7 +50,7 @@ export function ProjectsPage() {
                 <td>{p.default_worker}</td>
                 <td className="links">
                   <a
-                    href={`${GRAFANA}/d/emaw-operations?var-project=${encodeURIComponent(p.key)}`}
+                    href={`${grafanaBaseUrl()}/d/emaw-operations?var-project=${encodeURIComponent(p.key)}`}
                     target="_blank"
                     rel="noreferrer"
                   >

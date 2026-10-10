@@ -567,3 +567,69 @@ async def list_rbac_users(
         for uid, u in policy.users.items()
     ]
     return {"users": users, "count": len(users)}
+
+
+@router.get("/ops/summary")
+async def ops_summary(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
+    recent_limit: int = 12,
+) -> dict[str, Any]:
+    """Aggregated Home strip for Operator Console (viewer+ via status-report)."""
+    _require_auth(request, authorization)
+    user_id = _user_id(x_emaw_user_id)
+    ok, reason = _rbac(request).authorize(user_id, "status-report")
+    if not ok:
+        raise HTTPException(403, detail=reason)
+
+    store = request.app.state.store
+    prefix = request.app.state.settings.control_prefix
+    redis = request.app.state.redis
+
+    redis_ok = False
+    try:
+        pong = await redis.ping()
+        redis_ok = bool(pong)
+    except Exception:  # noqa: BLE001 — summary must stay partial on redis blip
+        redis_ok = False
+
+    paused_agents: list[str] = []
+    safe_mode = False
+    pause_all = False
+    if redis_ok:
+        for agent in KNOWN_PAUSE_AGENTS:
+            if await redis.get(f"{prefix}:pause:{agent}"):
+                paused_agents.append(agent)
+        safe_mode = bool(await redis.get(f"{prefix}:safe_mode"))
+        pause_all = bool(await redis.get(f"{prefix}:pause:all"))
+
+    pending = await store.list_approvals(status="pending", task_id=None, limit=200)
+    recent = await store.list_tasks(project=None, state=None, limit=min(max(recent_limit, 1), 50))
+    by_state = await store.count_by_state()
+
+    return {
+        "gateway": {"status": "ok", "version": "0.1.0"},
+        "redis_ok": redis_ok,
+        "store_enabled": bool(getattr(store, "enabled", True)),
+        "control": {
+            "safe_mode": safe_mode,
+            "pause_all": pause_all,
+            "paused_agents": paused_agents,
+        },
+        "approvals_pending": len(pending),
+        "tasks_by_state": by_state,
+        "tasks_recent": [
+            {
+                "task_id": t.get("task_id"),
+                "trace_id": t.get("trace_id"),
+                "type": t.get("type"),
+                "project": t.get("project") or t.get("project_key"),
+                "state": t.get("state"),
+                "assigned_to": t.get("assigned_to"),
+                "skill": t.get("skill"),
+                "created_at": t.get("created_at"),
+            }
+            for t in recent
+        ],
+    }

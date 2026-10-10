@@ -1,5 +1,7 @@
 # Operator Console (DECISION-20)
 
+คู่มือผู้ปฏิบัติการ (แต่ละพื้นผิว ops ทำอะไร / login ยังไง): **[operator-handbook.md](operator-handbook.md)**.
+
 Thin first-party SPA that wraps gateway `/internal/*` for operators.
 Does **not** replace Telegram HITL (DECISION-17) or Grafana / Hermes / GitHost UIs —
 except when Telegram is unavailable (air-gap) or not yet enabled (LAN + local LLM hybrid):
@@ -19,8 +21,10 @@ make up-console
 ```
 
 Default bind is loopback. Set `CONSOLE_BIND=0.0.0.0` only on trusted LAN hosts; restrict with
-host firewall (`ufw allow from <LAN_CIDR> to any port 8088`). Do not publish Redis/Postgres/
-MinIO/Hermes API to the LAN by default.
+host firewall (`ufw allow from <LAN_CIDR> to any port 8088`). The same bind also publishes
+**Grafana** (`GRAFANA_PORT`, e.g. 3030) and **Hermes dashboard** (`:9119`). Do **not** publish
+Redis/Postgres/MinIO/Hermes API/Prometheus to the LAN by default — Links marks those as
+loopback; use SSH `-L` from a laptop.
 
 Compose runs nginx with `read_only` + tmpfs; `cap_add` includes `CHOWN`/`SETUID`/`SETGID` so the
 stock entrypoint can prepare cache dirs (otherwise the container crash-loops).
@@ -38,13 +42,21 @@ Login: `HERMES_API_KEY` + Telegram user id from `config/rbac.yaml`.
 
 | Page | API |
 |---|---|
+| **Home** (default after login) | `GET /internal/ops/summary` — status strip, pending approvals, tasks by state, recent tasks, ops shortcuts (poll ~20s) |
 | Tasks / detail (table + Kanban board) | `GET /internal/tasks`, `GET /internal/tasks/{id}`, `GET /internal/audit` |
 | Dispatch (manual create-task) | `POST /internal/tasks`, `GET /internal/projects` |
 | Approvals inbox + history | `GET /internal/approvals?status=pending\|decided`, `POST …/decide` (`comment` optional) |
 | Audit search | `GET /internal/audit?task_id=\|trace_id=` |
 | Control | `GET/POST /internal/control/*` |
 | Projects | `GET /internal/projects` |
-| Links | Hermes `:9119`, Grafana `:3000` / Explore, MinIO `:9001` |
+| Links | Hermes / Grafana use **page hostname** (LAN IP when Console is on LAN); MinIO/Prometheus stay `127.0.0.1` |
+
+### Home exit criteria (B extension — not roadmap C)
+
+- [ ] `GET /internal/ops/summary` returns gateway + control + approvals_pending + tasks_by_state + tasks_recent
+- [ ] Console `/` shows Home; login lands on Home (not Tasks)
+- [ ] Pending approvals count links to Approvals; state chips filter Tasks
+- [ ] Deep-links to Grafana / Hermes; no Grafana iframe; no second control plane
 
 Task detail shows SCM deep-links from `source.url`, `inputs.repo`, and URLs found in handoffs (`links[]`),
 plus Loki Explore links filtered by `task_id` / `trace_id` (see [runbooks/trace-by-event.md](runbooks/trace-by-event.md)).

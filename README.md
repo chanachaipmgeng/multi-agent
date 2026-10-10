@@ -51,7 +51,7 @@ Everything is auditable · Grow in phases
 | `examples/sandbox-smoke/` | minimal pilot project whose `./test.sh` returns exit 0/1 correctly |
 | `cloudflared/` | Named Tunnel config template + runbook (Phase 1, blocked on domain) |
 | `scripts/`, `Makefile` | `make bootstrap`, secrets, migrate, `dev-tunnel`, `simulate-operator`, webhook-test, Named Tunnel setup/status, GitLab webhook register |
-| `docs/` | exit criteria, `operator-console.md`, `offline-airgap.md`, `environments.md`, `roadmap-next.md`, `secrets.md`, `org-unblock.md`, `skill-acceptance.md`, `runbooks/` (E14 index) |
+| `docs/` | exit criteria, `operator-console.md`, `operator-handbook.md` (คู่มือ ops), `offline-airgap.md`, `environments.md`, `roadmap-next.md`, `secrets.md`, `org-unblock.md`, `skill-acceptance.md`, `runbooks/` (E14 index) |
 | `.env.example`, `.sops.yaml`, `.gitleaks.toml`, `.agentignore`, `.pre-commit-config.yaml` | secrets & hygiene |
 
 ## Quick start (รันในเครื่อง / Run locally)

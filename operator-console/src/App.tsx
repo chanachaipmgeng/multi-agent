@@ -10,6 +10,7 @@ import { ProjectsPage } from "./pages/ProjectsPage";
 import { LinksPage } from "./pages/LinksPage";
 import { AuditPage } from "./pages/AuditPage";
 import { DispatchPage } from "./pages/DispatchPage";
+import { HomePage } from "./pages/HomePage";
 
 function Shell({ children }: { children: ReactNode }) {
   const { session, logout } = useAuth();
@@ -17,6 +18,9 @@ function Shell({ children }: { children: ReactNode }) {
     <div className="shell">
       <nav className="side">
         <div className="brand">EMAW Console</div>
+        <NavLink to="/" end className={({ isActive }) => (isActive ? "active" : "")}>
+          Home
+        </NavLink>
         <NavLink to="/tasks" className={({ isActive }) => (isActive ? "active" : "")}>
           Tasks
         </NavLink>
@@ -58,7 +62,7 @@ export function App() {
   return (
     <Shell>
       <Routes>
-        <Route path="/" element={<Navigate to="/tasks" replace />} />
+        <Route path="/" element={<HomePage />} />
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
         <Route path="/dispatch" element={<DispatchPage />} />
@@ -67,7 +71,7 @@ export function App() {
         <Route path="/control" element={<ControlPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/links" element={<LinksPage />} />
-        <Route path="*" element={<Navigate to="/tasks" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>
   );

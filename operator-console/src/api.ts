@@ -76,6 +76,29 @@ export type ProjectRow = {
   llm_backend: string;
 };
 
+export type OpsSummary = {
+  gateway: { status: string; version?: string };
+  redis_ok: boolean;
+  store_enabled: boolean;
+  control: {
+    safe_mode: boolean;
+    pause_all: boolean;
+    paused_agents: string[];
+  };
+  approvals_pending: number;
+  tasks_by_state: Record<string, number>;
+  tasks_recent: Array<{
+    task_id: string;
+    trace_id?: string;
+    type?: string;
+    project?: string;
+    state?: string;
+    assigned_to?: string | null;
+    skill?: string | null;
+    created_at?: string | null;
+  }>;
+};
+
 export const api = {
   listTasks: (s: Session, q: { project?: string; state?: string } = {}) => {
     const params = new URLSearchParams();
@@ -173,5 +196,10 @@ export const api = {
       users: Array<{ user_id: number; name: string; roles: string[] }>;
       count: number;
     }>(s, "/internal/rbac/users"),
+  opsSummary: (s: Session, recentLimit = 12) =>
+    request<OpsSummary>(
+      s,
+      `/internal/ops/summary?recent_limit=${encodeURIComponent(String(recentLimit))}`,
+    ),
   healthz: () => fetch(`${BASE}/healthz`).then((r) => r.json()),
 };

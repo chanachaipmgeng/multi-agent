@@ -435,7 +435,8 @@ services:
       - ./.gitleaks.toml:/etc/gitleaks.toml:ro
     secrets: [telegram_token, llm_key_coordinator, gitlab_token_readonly, pg_password, hermes_api_key]
     ports:
-      - "127.0.0.1:${HERMES_DASHBOARD_PORT:-9119}:9119"
+      # Dashboard follows CONSOLE_BIND (LAN hybrid); Hermes API stays loopback.
+      - "${CONSOLE_BIND:-127.0.0.1}:${HERMES_DASHBOARD_PORT:-9119}:9119"
       - "127.0.0.1:${HERMES_API_PORT:-8642}:8642"
     networks: [control, workers]
 
@@ -705,12 +706,14 @@ services:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-emaw-grafana-dev}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_AUTH_ANONYMOUS_ENABLED=false
-      - GF_SERVER_ROOT_URL=http://127.0.0.1:${GRAFANA_PORT:-3000}
+      # Domain-relative root so LAN IP and loopback both work when CONSOLE_BIND opens the port.
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-%(protocol)s://%(domain)s:%(http_port)s/}
     volumes:
       - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./observability/grafana/dashboards:/etc/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
-    ports: ["127.0.0.1:${GRAFANA_PORT:-3000}:3000"]
+    # Same bind as Console for LAN hybrid; default loopback.
+    ports: ["${CONSOLE_BIND:-127.0.0.1}:${GRAFANA_PORT:-3000}:3000"]
     networks: [control]
     depends_on: [prometheus, loki, tempo]
     profiles: ["observability"]
@@ -718,7 +721,11 @@ services:
 
   # DECISION-20 — Operator Console (thin SPA → /internal/*)
   operator-console:
-    build: ./operator-console
+    build:
+      context: ./operator-console
+      args:
+        VITE_GRAFANA_PORT: ${GRAFANA_PORT:-3000}
+        VITE_HERMES_PORT: ${HERMES_DASHBOARD_PORT:-9119}
     image: emaw/operator-console:dev
     # CONSOLE_BIND=0.0.0.0 for LAN hybrid (online host + local LLM); default loopback.
     ports: ["${CONSOLE_BIND:-127.0.0.1}:${CONSOLE_PORT:-8088}:80"]
