@@ -1,11 +1,13 @@
 # Feature: Operator Console (DECISION-20)
 
 Prove the thin console APIs and optional compose profile without requiring a browser.
+Includes Dispatch (`POST /internal/tasks`) used by the Console Dispatch page.
 
 ## Preconditions
 
 - Gateway up with `HERMES_API_KEY` and `config/rbac.yaml` (admin user `987654321` or `VERIFY_EMAW_USER_ID`).
-- Optional: `make up-console` for HTTP `:8088` (build needs Docker).
+- Optional: `make up-console` or `make up-lan` for HTTP `:8088` (build needs Docker).
+- LAN hybrid: `CONSOLE_BIND=0.0.0.0` — also prove `http://<host-ip>:8088/` → 200.
 
 ## Steps
 
@@ -49,7 +51,20 @@ fi
 ```
 
 5. If console profile is up: `curl -fsS -o /dev/null -w "%{http_code}" http://127.0.0.1:${CONSOLE_PORT:-8088}/` → `200`.
+   When `CONSOLE_BIND=0.0.0.0`, also hit `http://$(hostname -I | awk '{print $1}'):${CONSOLE_PORT:-8088}/` (or the known LAN IP) → `200`.
+
+6. Dispatch path (Console Manual Task Dispatcher):
+
+```bash
+curl -fsS -H "Authorization: Bearer $HERMES_API_KEY" \
+  -H "X-EMAW-User-Id: ${VERIFY_EMAW_USER_ID:-987654321}" \
+  -H "Content-Type: application/json" \
+  -d "{\"type\":\"feature\",\"project\":\"sandbox-smoke\",\"instruction\":\"verify-emaw dispatch prove\",\"labels\":[\"area:backend\"],\"idempotency_key\":\"verify-emaw:$(date +%s)\"}" \
+  "$GATEWAY_URL/internal/tasks" | tee evidence/dispatch-create.json
+```
+
+Expect `"status":"queued"` and a `task_id`. Or: `make simulate-operator CMD=create-task`.
 
 ## Pass
 
-- Steps 1–4 succeed (step 4 audit only when ≥1 task exists); step 5 only when `operator-console` is running.
+- Steps 1–4 succeed (step 4 audit only when ≥1 task exists); step 5 when `operator-console` is running; step 6 when proving Dispatch.

@@ -4,7 +4,8 @@ Thin first-party SPA that wraps gateway `/internal/*` for operators.
 Does **not** replace Telegram HITL (DECISION-17) or Grafana / Hermes / GitHost UIs —
 except when Telegram is unavailable (air-gap) or not yet enabled (LAN + local LLM hybrid):
 Console is the primary HITL (`make up-offline` or `make up-lan`; see
-[offline-airgap.md](offline-airgap.md) / [environments.md](environments.md)).
+[offline-airgap.md](offline-airgap.md) / [environments.md](environments.md) /
+[roadmap-next.md](roadmap-next.md)).
 
 ## Run
 

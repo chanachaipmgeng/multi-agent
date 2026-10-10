@@ -221,6 +221,7 @@ Cloud+tunnel prod path: [`deploy-linux-vm.md`](deploy-linux-vm.md) (different fr
 |---|---|---|---|
 | 2026-10-09 | Windows pack host (Docker Desktop) | `qwen2.5-coder:7b` | `offline-acceptance` **PASSED**; pack `offline-pack/20261009T180801Z` + `preflight-offline PACK` **OK** (images ~5.3G + volumes). Disk ~40 GiB free — **did not pull 14b**. Rebuild Phase B–C with `LOCAL_LLM_MODEL=qwen2.5-coder:14b` on the 7920 (or any host with GPU + disk) before production transfer. Also fixed Operator Console nginx under `read_only` (`cap_add` CHOWN/SETUID/SETGID) so `:8088` stays up. |
 | 2026-10-10 | Precision 7920 (`10.50.0.117`, Ubuntu, 2× RTX 5000) | `qwen2.5-coder:14b` (online pull) + `nomic-embed-text` | `offline-acceptance` **PASSED** on host (`up-offline` + console + observability). Notes: Docker Hub anonymous pull of `minio/minio` denied — loaded image via `docker save`/`load` from pack host and set `MINIO_IMAGE=minio/minio:emaw-offline`; host `:3000` taken by `open-webui` → `GRAFANA_PORT=3030`; Hermes bind-mount `.env` needed `chmod 644` (container UID). Console `127.0.0.1:8088`. |
+| 2026-10-11 | Precision 7920 (same) | `qwen2.5-coder:14b` | **LAN hybrid:** `CONSOLE_BIND=0.0.0.0` + `make up-lan` → Console **http://10.50.0.117:8088** HTTP 200 from LAN. Still local LLM (no OpenRouter/cloudflared). Next work: [roadmap-next.md](roadmap-next.md). |
 
 If GPU/VRAM/disk on the pack host is insufficient for 14b, prove with 7b as above, then rebuild
 the pack on a capable host before Phase D.

@@ -30,6 +30,7 @@ make up-lan
 
 Telegram 24/7 is optional later (outbound long-poll to `api.telegram.org`); keep `LLM_MODE=local`.
 See [operator-console.md](operator-console.md) § Telegram checklist.
+Host next-work list (7920): [roadmap-next.md](roadmap-next.md).
 
 ## Observability (D4.1)
 

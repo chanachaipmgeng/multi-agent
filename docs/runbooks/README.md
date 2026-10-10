@@ -15,7 +15,8 @@ Design checklist **E14** requires: tunnel down, agent stuck, token rotation, res
 | Audit export (object lock) | D4.4 prep | [audit-export.md](audit-export.md) |
 | Ingress Access/WAF checklist | D4.3 prep | generated: `cloudflared/access-and-waf.md` via `make ingress-render` |
 | Offline / air-gap pack (GPU host) | (supporting) | [../offline-airgap.md](../offline-airgap.md) — phases A–F, `preflight-offline` / `offline-acceptance` / `pack-offline` |
+| LAN + local LLM / next work | (supporting) | [../environments.md](../environments.md) · [../roadmap-next.md](../roadmap-next.md) — `up-lan`, `CONSOLE_BIND`, P0–P4 |
 
 After production go-live, fill [weekly-log-review.md](weekly-log-review.md) for the first **two weeks** (one row per review meeting).
 
-Operator proofs: `.cursor/skills/verify-emaw` — features include `local-free-offline` and `operator-console`.
+Operator proofs: `.cursor/skills/verify-emaw` — features include `local-free-offline` and `operator-console` (Dispatch + LAN bind).

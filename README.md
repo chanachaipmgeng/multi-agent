@@ -36,10 +36,11 @@ Everything is auditable · Grow in phases
 | `docker-compose.yml` | platform + `router` + 5 role adapters + MinIO; profiles `agents`, `ingress`, `onprem-llm`, `socraticode`, `console`, `single` (legacy) |
 | `docker-compose.local-free.yml` | all 6 agents → `inference-ollama` (`make up-local-free`, DECISION-15) |
 | Air-gap pack | phases A–F in [`docs/offline-airgap.md`](docs/offline-airgap.md); `preflight-offline` / `offline-acceptance` / `pack-offline` |
-| `docker-compose.prod.yml` | Linux VM override (`make up-prod`) |
+| LAN + local LLM | `make up-lan` + `CONSOLE_BIND=0.0.0.0` → Console on host LAN IP; see [`docs/environments.md`](docs/environments.md), next work [`docs/roadmap-next.md`](docs/roadmap-next.md) |
+| `docker-compose.prod.yml` | Linux VM override (`make up-prod`) — not for air-gap / LAN-hybrid hosts |
 | `webhook-gateway/` | GitLab + GitHub webhooks + `/internal/*` control plane (tasks, approvals, pause/safe-mode, projects, audit) + RBAC |
 | `queue-adapter/` | `MODE=router\|worker` — fan-out, HANDOFF parse, `ScmClient` enrich, breaker, MinIO upload, `/metrics` |
-| `operator-console/` | Operator Console SPA (DECISION-20) — `make up-console` → `:8088` |
+| `operator-console/` | Operator Console SPA (DECISION-20) — `make up-console` / `up-lan` → `:8088` (Dispatch, Tasks board, Approvals) |
 | `db/migrations/` | Task Store schema: `tasks`, `handoffs`, `approvals`, `audit_events` |
 | `config/projects.yaml` | project allowlist + routing (`scm: gitlab\|github`) |
 | `config/policies/platform-policy.yaml` | never push `main`, HITL matrix, limits |
@@ -50,7 +51,7 @@ Everything is auditable · Grow in phases
 | `examples/sandbox-smoke/` | minimal pilot project whose `./test.sh` returns exit 0/1 correctly |
 | `cloudflared/` | Named Tunnel config template + runbook (Phase 1, blocked on domain) |
 | `scripts/`, `Makefile` | `make bootstrap`, secrets, migrate, `dev-tunnel`, `simulate-operator`, webhook-test, Named Tunnel setup/status, GitLab webhook register |
-| `docs/` | exit criteria, `operator-console.md`, `secrets.md`, `environments.md`, `org-unblock.md`, `skill-acceptance.md`, `runbooks/` (E14 index) |
+| `docs/` | exit criteria, `operator-console.md`, `offline-airgap.md`, `environments.md`, `roadmap-next.md`, `secrets.md`, `org-unblock.md`, `skill-acceptance.md`, `runbooks/` (E14 index) |
 | `.env.example`, `.sops.yaml`, `.gitleaks.toml`, `.agentignore`, `.pre-commit-config.yaml` | secrets & hygiene |
 
 ## Quick start (รันในเครื่อง / Run locally)
@@ -65,12 +66,16 @@ git clone https://github.com/chanachaipmgeng/multi-agent.git && cd multi-agent
 make bootstrap
 
 # Operator surfaces (ไม่ต้อง psql)
-make up-console                          # Tasks / Approvals HITL / Control → http://127.0.0.1:8088
+make up-console                          # Tasks / Dispatch / Approvals / Control → http://127.0.0.1:8088
 make up-observability                    # Grafana :3000 · Loki · Prometheus
 
 # Optional — Hermes agents
 # make hermes-seed && make skills-sync && make up-agents
 # Local-free (all 6 on Ollama): make down && make up-local-free && make local-llm-pull
+# LAN hybrid (online host + Ollama + Console on LAN IP):
+#   CONSOLE_BIND=0.0.0.0 make up-lan && make local-llm-pull
+#   → http://<host-ip>:8088  (see docs/roadmap-next.md)
+# Air-gap GPU: make load-offline && make up-offline  (docs/offline-airgap.md)
 # GitLab webhook ก่อนมีโดเมน: make dev-tunnel   (Quick Tunnel; see docs/runbooks/tunnel.md)
 # API-only drills ไม่ใช้ Telegram: make simulate-operator CMD=create-task
 
@@ -97,8 +102,9 @@ issue closed) · `200 duplicate` (same event UUID/delivery within 24 h) · `200 
 `agent-ready`) · `200 attached` (issue already has an active task) · `200 queued` (Task → `tasks` +
 `XADD stream:tasks`). GitHub allowlist: `issues`, `workflow_run`, `workflow_job`.
 
-Operator Console: `make up-console` → http://127.0.0.1:8088 (client of `/internal/*`; see
-[`docs/operator-console.md`](docs/operator-console.md)).
+Operator Console: `make up-console` → http://127.0.0.1:8088 (or `make up-lan` + `CONSOLE_BIND=0.0.0.0`
+for LAN IP). Client of `/internal/*` only — see [`docs/operator-console.md`](docs/operator-console.md).
+Current-host next work: [`docs/roadmap-next.md`](docs/roadmap-next.md).
 
 Task envelope (design §4.3): `task_id`, `trace_id`, `type`, `project`, `source`, `requester`,
 `assigned_to`, `skill`, `inputs`, `constraints{token_budget,self_heal_limit,deadline_min}`,
@@ -112,6 +118,7 @@ Task envelope (design §4.3): `task_id`, `trace_id`, `type`, `project`, `source`
 | Hybrid LLM (cloud + Ollama for sensitive repos) | `projects.yaml#data_classification/llm_backend`, `inference-ollama` profile, per-profile `local_endpoint` |
 | Local-free all 6 agents (DECISION-15) | `docker-compose.local-free.yml`, `OLLAMA_CONTEXT_LENGTH=65536`, `model.ollama_num_ctx: 65536` |
 | Offline / air-gap GPU host | `docs/offline-airgap.md`, `LOCAL_LLM_MODEL` sync, `pack-offline` / `up-offline` |
+| LAN + local LLM hybrid (no tunnel) | `make up-lan`, `CONSOLE_BIND`, `docs/environments.md`, `docs/roadmap-next.md` |
 | Phase 3 router fan-out (DECISION-16) | `queue-adapter` `MODE=router|worker`, HANDOFF YAML, MinIO SigV4 artifacts |
 | Dashboard basic auth (DECISION-18) | `secrets/dashboard_password` → `HERMES_DASHBOARD_BASIC_AUTH_*` · `:9119` |
 | Metrics §8.2 | adapter `:9101–9106/metrics` (host) · stubs `self_heal` / `sandbox_exec` / `llm_cost_usd` · gateway `approval_latency_seconds` |

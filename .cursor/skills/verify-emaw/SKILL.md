@@ -1,11 +1,11 @@
 ---
 name: verify-emaw
-description: Drive the EMAW platform (webhook-gateway, queue adapters, Hermes agents, observability, Operator Console, local-free/air-gap LLM) the way an operator would — HTTP + make smoke checks. Use when proving a change to compose, gateway, adapters, metrics, Grafana, console, or offline pack/load; or when /poteto-mode needs a scripted green/red check.
+description: Drive the EMAW platform (webhook-gateway, queue adapters, Hermes agents, observability, Operator Console, local-free/air-gap/LAN-hybrid LLM) the way an operator would — HTTP + make smoke checks. Use when proving a change to compose, gateway, adapters, metrics, Grafana, console, CONSOLE_BIND/up-lan, or offline pack/load; or when /poteto-mode needs a scripted green/red check.
 ---
 
 # Verify EMAW (operator surface)
 
-Primary surface: **HTTP services on loopback** + **Makefile smoke**. Secondary: Grafana UI and Operator Console (`make up-console` → `:8088`). Core proofs are curl/make exit codes and JSON bodies; console is optional HTTP reachability plus `/internal/*` clients.
+Primary surface: **HTTP services** + **Makefile smoke**. Secondary: Grafana UI and Operator Console (`make up-console` / `up-lan` → `:8088`). Core proofs are curl/make exit codes and JSON bodies; console is HTTP reachability plus `/internal/*` clients (Dispatch = `POST /internal/tasks`).
 
 Never drive a stack you did not start for this run when isolation matters. The default compose project is shared on this host; prefer **doctor** before mutating, and use pause/resume only through documented internal API with a recorded RUN_ID.
 
@@ -25,6 +25,9 @@ make up-console
 
 # Air-gap bring-up (local-free + console + observability) — see docs/offline-airgap.md
 # make up-offline
+
+# LAN hybrid (online host + local Ollama; Console on LAN IP) — see docs/environments.md
+# CONSOLE_BIND=0.0.0.0 make up-lan
 ```
 
 Ready when:
@@ -34,6 +37,7 @@ Ready when:
 - `scripts/local-free-check.sh` passes when proving the Ollama path (`make local-free-check`)
 - `curl -fsS http://127.0.0.1:9090/-/healthy` and `http://127.0.0.1:9093/-/healthy` return OK (observability)
 - Optional: `curl -fsS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8088/` returns `200`
+- LAN hybrid: same for `http://<host-lan-ip>:8088/` when `CONSOLE_BIND=0.0.0.0`
 
 Teardown only what this RUN started. Prefer:
 
