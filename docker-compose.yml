@@ -720,7 +720,8 @@ services:
   operator-console:
     build: ./operator-console
     image: emaw/operator-console:dev
-    ports: ["127.0.0.1:${CONSOLE_PORT:-8088}:80"]
+    # CONSOLE_BIND=0.0.0.0 for LAN hybrid (online host + local LLM); default loopback.
+    ports: ["${CONSOLE_BIND:-127.0.0.1}:${CONSOLE_PORT:-8088}:80"]
     networks: [control]
     depends_on: [webhook-gateway]
     profiles: ["console"]

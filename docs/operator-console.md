@@ -2,8 +2,9 @@
 
 Thin first-party SPA that wraps gateway `/internal/*` for operators.
 Does **not** replace Telegram HITL (DECISION-17) or Grafana / Hermes / GitHost UIs —
-except on **air-gap** hosts where Telegram is unavailable: Console is the primary HITL
-(`make up-offline`; see [offline-airgap.md](offline-airgap.md)).
+except when Telegram is unavailable (air-gap) or not yet enabled (LAN + local LLM hybrid):
+Console is the primary HITL (`make up-offline` or `make up-lan`; see
+[offline-airgap.md](offline-airgap.md) / [environments.md](environments.md)).
 
 ## Run
 
@@ -12,7 +13,13 @@ except on **air-gap** hosts where Telegram is unavailable: Console is the primar
 make up-console
 # → http://127.0.0.1:8088
 # air-gap one-shot: make up-offline  (local-free + console + observability)
+# LAN hybrid (online host + local Ollama, Console on LAN IP):
+#   CONSOLE_BIND=0.0.0.0 in .env → make up-lan → http://<host-ip>:8088
 ```
+
+Default bind is loopback. Set `CONSOLE_BIND=0.0.0.0` only on trusted LAN hosts; restrict with
+host firewall (`ufw allow from <LAN_CIDR> to any port 8088`). Do not publish Redis/Postgres/
+MinIO/Hermes API to the LAN by default.
 
 Compose runs nginx with `read_only` + tmpfs; `cap_add` includes `CHOWN`/`SETUID`/`SETGID` so the
 stock entrypoint can prepare cache dirs (otherwise the container crash-loops).
@@ -92,8 +99,26 @@ Each step needs its own DECISION note + exit criteria before coding.
 | Non-goal | Not a second brain / wiki; write path stays agents |
 | Exit | Read-only graph view for one project/trace; documented data source |
 
+## Telegram 24/7 checklist (LAN + local LLM — future)
+
+Keep `LLM_MODE=local` / Ollama. Telegram is an extra HITL channel (Hermes long-poll
+**outbound** to `api.telegram.org`) — no inbound port publish for the bot.
+
+Do **not** invent tokens or user ids; fill from [org-unblock.md](org-unblock.md).
+
+1. Set `SECRET_TELEGRAM_TOKEN` and `TELEGRAM_ALLOWED_USERS` in `.env` → `make secrets-dev`
+   (or decrypt) so `scripts/hermes-seed-env.sh` writes coordinator `/opt/data/.env`
+2. Put real Telegram user ids in `config/rbac.yaml` (DECISION-8); restart gateway if needed
+3. Confirm coordinator container can reach `api.telegram.org` (host has outbound net)
+4. Smoke: message the bot → task appears in Console Tasks / Dispatch still works
+5. Optional: Alertmanager `TELEGRAM_CHAT_ID` for alerts (separate from Hermes HITL)
+
+Until those values exist, use Console on LAN (`CONSOLE_BIND=0.0.0.0` + `make up-lan`) as
+primary HITL.
+
 ## Related
 
 - Design non-goal amendment: `docs/design/system-design-v1.1.md` §2.4
 - Decision: `docs/decisions.md` DECISION-20
 - Verify: `.cursor/skills/verify-emaw/features/operator-console.md`
+- Environments: [environments.md](environments.md) (LAN + local LLM column)

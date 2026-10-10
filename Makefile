@@ -102,6 +102,11 @@ up-offline: ## air-gap bring-up: local-free + Operator Console + observability (
 	@$(MAKE) up-console
 	@$(MAKE) up-observability
 
+up-lan: ## online host + local LLM + console/obs (set CONSOLE_BIND=0.0.0.0 for LAN IP)
+	@$(MAKE) up-local-free
+	@$(MAKE) up-console
+	@$(MAKE) up-observability
+
 pack-offline: ## pack images + ollama/socraticode/reviewer volumes → offline-pack/<ts>/
 	@scripts/pack-offline.sh
 
@@ -253,4 +258,4 @@ skill-accept-sandbox: ## ≥3 sandbox-smoke skill-acceptance drills (needs emaw-
 test-scripts: ## render-ingress unit tests (needs PyYAML)
 	@$(PY) -m pytest -q scripts/test_render_ingress.py
 
-.PHONY: help prereqs bootstrap venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-console up-socraticode socraticode-check up-local-free up-offline pack-offline load-offline sync-local-llm preflight-offline offline-acceptance warm-socraticode-npm restart-adapters up-cloud dev-flow-live local-llm-pull local-free-check preflight ingress-render audit-export audit-verify up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate dev-tunnel tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration test-scripts lint gitleaks webhook-test simulate-operator verify-phase0 skill-accept-sandbox
+.PHONY: help prereqs bootstrap venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-console up-socraticode socraticode-check up-local-free up-offline up-lan pack-offline load-offline sync-local-llm preflight-offline offline-acceptance warm-socraticode-npm restart-adapters up-cloud dev-flow-live local-llm-pull local-free-check preflight ingress-render audit-export audit-verify up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate dev-tunnel tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration test-scripts lint gitleaks webhook-test simulate-operator verify-phase0 skill-accept-sandbox

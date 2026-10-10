@@ -1,21 +1,35 @@
 # Environments (D2.6)
 
-| | **dev (local-free)** | **air-gap / offline** | **staging** | **prod** |
-|---|---|---|---|---|
-| Host | Windows / Docker Desktop | Linux GPU host (e.g. Precision 7920) | Linux VM or same host with cloud LLM | Linux VM Ubuntu 24.04 (DECISION-2) |
-| Compose | `docker-compose.yml` + `docker-compose.local-free.yml` | same + `make up-offline` (console + observability) | base compose + cloud LLM keys | base + `docker-compose.prod.yml` + profile `ingress` |
-| LLM | `inference-ollama` / `LOCAL_LLM_MODEL` (default 7b) @ **64K ctx** | packed Ollama; recommend **14b** on 2×16 GB VRAM | OpenRouter (or hybrid per `projects.yaml`) | OpenRouter + optional `onprem-llm` |
-| Agents | all 6 | all 6 | all 6 | all 6 |
-| Adapters | router + 5 workers (`ADAPTER_DISPATCHER=hermes_api`) | same | same | same |
-| Ingress | loopback only | loopback / LAN only (**no** cloudflared) | Cloudflare tunnel (staging hostname) | Cloudflare tunnel (DECISION-5) |
-| SCM | GitLab + optional GitHub (`scm` in `projects.yaml`) | optional LAN SCM; else Console/API only | same | same |
-| Operator Console | `make up-console` → `:8088` (optional) | **primary HITL** (`up-offline`) | optional | optional (DECISION-20) |
-| Secrets | `make secrets-dev` | transfer age key / `secrets-dev` | SOPS `.env.enc` | SOPS / future Vault |
-| Pilot repos | `sandbox-smoke` + placeholders | same | DECISION-11 pilot | DECISION-11 |
-| RBAC | `config/rbac.yaml` (from example) | same | real Telegram ids (DECISION-8) | same |
-| MinIO | local compose + SigV4 via root password | same | local or external | compose MinIO + offsite restic (Phase 4) |
-| Pack/load | — | `make pack-offline` / `load-offline` — [`offline-airgap.md`](offline-airgap.md) | — | — |
-| Verified | API Flow A + E11 pause/RBAC (see `phase3-exit-criteria.md`) | operator acceptance on GPU host | — | — |
+| | **dev (local-free)** | **LAN + local LLM** | **air-gap / offline** | **staging** | **prod** |
+|---|---|---|---|---|---|
+| Host | Windows / Docker Desktop | Linux GPU host with outbound net (e.g. 7920) | Linux GPU host (no outbound) | Linux VM or same host with cloud LLM | Linux VM Ubuntu 24.04 (DECISION-2) |
+| Compose | `docker-compose.yml` + `docker-compose.local-free.yml` | same + `make up-lan` (console + observability) | same + `make up-offline` | base compose + cloud LLM keys | base + `docker-compose.prod.yml` + profile `ingress` |
+| LLM | `inference-ollama` / `LOCAL_LLM_MODEL` (default 7b) @ **64K ctx** | Ollama **14b** (online pull OK); **no** OpenRouter | packed Ollama; recommend **14b** | OpenRouter (or hybrid per `projects.yaml`) | OpenRouter + optional `onprem-llm` |
+| Agents | all 6 | all 6 | all 6 | all 6 | all 6 |
+| Adapters | router + 5 workers (`ADAPTER_DISPATCHER=hermes_api`) | same | same | same | same |
+| Ingress | loopback only | Console on LAN (`CONSOLE_BIND=0.0.0.0`); **no** cloudflared | loopback only (**no** cloudflared) | Cloudflare tunnel (staging hostname) | Cloudflare tunnel (DECISION-5) |
+| SCM | GitLab + optional GitHub (`scm` in `projects.yaml`) | optional; Console/API OK | optional LAN SCM; else Console/API only | same | same |
+| Operator Console | `make up-console` → `:8088` (optional) | **primary HITL** now; Telegram later | **primary HITL** (`up-offline`) | optional | optional (DECISION-20) |
+| Secrets | `make secrets-dev` | `secrets-dev` on host | transfer age key / `secrets-dev` | SOPS `.env.enc` | SOPS / future Vault |
+| Pilot repos | `sandbox-smoke` + placeholders | same | same | DECISION-11 pilot | DECISION-11 |
+| RBAC | `config/rbac.yaml` (from example) | same → real Telegram ids when enabling bot | same | real Telegram ids (DECISION-8) | same |
+| MinIO | local compose + SigV4 via root password | same | same | local or external | compose MinIO + offsite restic (Phase 4) |
+| Pack/load | — | not required (host can pull) | `make pack-offline` / `load-offline` — [`offline-airgap.md`](offline-airgap.md) | — | — |
+| Verified | API Flow A + E11 pause/RBAC (see `phase3-exit-criteria.md`) | Console via LAN IP + local 14b | operator acceptance on GPU host | — | — |
+
+### LAN + local LLM (hybrid)
+
+Online host that still runs **local Ollama** (not `up-prod` / OpenRouter):
+
+```bash
+# .env: LLM_MODE=local, LOCAL_LLM_MODEL=qwen2.5-coder:14b, CONSOLE_BIND=0.0.0.0
+make up-lan
+# → http://<host-lan-ip>:8088
+# Prefer: ufw allow from <LAN_CIDR> to any port 8088
+```
+
+Telegram 24/7 is optional later (outbound long-poll to `api.telegram.org`); keep `LLM_MODE=local`.
+See [operator-console.md](operator-console.md) § Telegram checklist.
 
 ## Observability (D4.1)
 

@@ -141,9 +141,14 @@ If step 3 fails, fix toolkit/`nvidia-ctk runtime configure --runtime=docker` bef
 
 ## Phase F — Load & accept (7920)
 
-**Preferred when the host can reach Hub/Ollama:** clone the repo, set
-`LOCAL_LLM_MODEL=qwen2.5-coder:14b`, `make secrets-dev`, `make up-offline`,
-`make local-llm-pull`, pull `nomic-embed-text`, `make warm-socraticode-npm`, then
+**Preferred when the host can reach Hub/Ollama (LAN + local LLM hybrid):** clone the repo, set
+`LOCAL_LLM_MODEL=qwen2.5-coder:14b`, `make secrets-dev`, then either:
+
+- `make up-lan` with `CONSOLE_BIND=0.0.0.0` → Console at `http://<host-lan-ip>:8088`  
+  (still **no** OpenRouter / cloudflared; see [environments.md](environments.md)), or
+- `make up-offline` (loopback Console) if you prefer SSH tunnel only.
+
+Then `make local-llm-pull`, pull `nomic-embed-text`, `make warm-socraticode-npm`, and
 `make offline-acceptance`.
 
 **Air-gap pack path** (no outbound pulls):
@@ -159,7 +164,8 @@ make up-offline
 make offline-acceptance                        # MUST pass before production use
 ```
 
-- Console: http://127.0.0.1:8088 (primary HITL — no Telegram)
+- Console: http://127.0.0.1:8088 (default) or `http://<host-ip>:8088` when
+  `CONSOLE_BIND=0.0.0.0` (`make up-lan`)
 - Grafana: http://127.0.0.1:${GRAFANA_PORT:-3000} — if another stack owns `:3000`, set
   `GRAFANA_PORT=3030` in `.env` (`offline-acceptance` honors `GRAFANA_PORT`)
 - MinIO: if Hub denies `minio/minio`, `docker save`/`load` the digest-pinned image from a
@@ -167,9 +173,8 @@ make offline-acceptance                        # MUST pass before production use
 - Hermes: `make secrets-dev` / `hermes-seed-env` writes `hermes-data/*/.env` mode `644` so the
   container UID can read the bind mount
 
-Ports stay on loopback. For LAN Console access prefer SSH tunnel
-(`ssh -L 8088:127.0.0.1:8088 user@host`) or an authenticated reverse proxy — do not
-publish raw compose ports.
+Air-gap: keep ports on loopback (SSH tunnel). LAN hybrid: bind **Console only** via
+`CONSOLE_BIND`; firewall to LAN CIDR — do not publish Redis/Postgres/MinIO/Hermes API.
 
 ### Operator-only checklist (cannot be done from the repo)
 
