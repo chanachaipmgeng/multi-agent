@@ -201,6 +201,52 @@ async def test_approval_flow(client) -> None:
     assert "approval_latency_seconds_sum" in scraped
 
 
+async def test_decide_approval_stores_comment_in_audit(client) -> None:
+    ac, store, _redis = client
+    task = Task(
+        task_id="t-comment-1",
+        trace_id="trace-comment",
+        type="feature",
+        project="frontend-app",
+        source=TaskSource(kind="telegram"),
+        requester=TaskRequester(channel="telegram", user_id=1),
+        assigned_to="dev-frontend",
+        skill="dev-flow",
+        constraints=TaskConstraints(token_budget=1, self_heal_limit=0, deadline_min=1),
+        state=TaskState.IN_PROGRESS,
+        created_at=datetime.now(UTC),
+    )
+    await store.create_task(task)
+    r = await ac.post(
+        "/internal/approvals",
+        headers=_headers(),
+        json={
+            "task_id": "t-comment-1",
+            "action": "push_work_branch_and_open_mr",
+            "payload": {"branch": "feat/comment"},
+            "required_role": "developer",
+        },
+    )
+    assert r.status_code == 200
+    nonce = r.json()["nonce"]
+    decide = await ac.post(
+        f"/internal/approvals/{nonce}/decide",
+        headers=_headers(),
+        json={"decision": "rejected", "comment": "needs tests first"},
+    )
+    assert decide.status_code == 200
+    assert decide.json()["status"] == "rejected"
+    audit = await ac.get(
+        "/internal/audit", headers=_headers(111), params={"task_id": "t-comment-1"}
+    )
+    assert audit.status_code == 200
+    events = audit.json()["events"]
+    rejected = [e for e in events if e.get("event") == "approval.rejected"]
+    assert rejected, events
+    attrs = rejected[-1].get("attrs") or {}
+    assert attrs.get("comment") == "needs tests first"
+
+
 async def test_console_apis_approvals_projects_audit_control(client) -> None:
     ac, store, redis = client
     task = Task(

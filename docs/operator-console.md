@@ -30,8 +30,9 @@ Login: `HERMES_API_KEY` + Telegram user id from `config/rbac.yaml`.
 
 | Page | API |
 |---|---|
-| Tasks / detail | `GET /internal/tasks`, `GET /internal/tasks/{id}`, `GET /internal/audit` |
-| Approvals inbox + history | `GET /internal/approvals?status=pending\|decided`, `POST …/decide` |
+| Tasks / detail (table + Kanban board) | `GET /internal/tasks`, `GET /internal/tasks/{id}`, `GET /internal/audit` |
+| Dispatch (manual create-task) | `POST /internal/tasks`, `GET /internal/projects` |
+| Approvals inbox + history | `GET /internal/approvals?status=pending\|decided`, `POST …/decide` (`comment` optional) |
 | Audit search | `GET /internal/audit?task_id=\|trace_id=` |
 | Control | `GET/POST /internal/control/*` |
 | Projects | `GET /internal/projects` |
@@ -39,6 +40,21 @@ Login: `HERMES_API_KEY` + Telegram user id from `config/rbac.yaml`.
 
 Task detail shows SCM deep-links from `source.url`, `inputs.repo`, and URLs found in handoffs (`links[]`),
 plus Loki Explore links filtered by `task_id` / `trace_id` (see [runbooks/trace-by-event.md](runbooks/trace-by-event.md)).
+
+## Blueprint map (do not rebuild a second presentation layer)
+
+External “dashboard /api + Streamlit” sketches map onto this Console + `/internal/*` only.
+Do **not** add a parallel SPA, `/api/tasks` aliases, or Streamlit for the same job.
+
+| Sketch endpoint / UI | EMAW surface |
+|---|---|
+| `GET /api/tasks` | `GET /internal/tasks` · Tasks table / board |
+| `GET /api/tasks/{id}/audit` | `GET /internal/audit?task_id=` · Task detail + Audit |
+| `POST /api/tasks/create` | `POST /internal/tasks` · **Dispatch** page |
+| `POST /api/tasks/{id}/action` | `POST /internal/approvals/{nonce}/decide` (nonce model; optional `comment`) |
+| Metrics | Grafana / Prometheus + gateway `/healthz` (Links page) |
+| WebSocket task push | Out of scope — Refresh / short poll in UI |
+| Telegram HITL | Cloud path only; air-gap uses this Console ([offline-airgap.md](offline-airgap.md)) |
 
 ## Roadmap C (after B stable)
 

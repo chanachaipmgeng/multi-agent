@@ -11,6 +11,7 @@ export function ApprovalsPage() {
   const [rows, setRows] = useState<ApprovalRow[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [comments, setComments] = useState<Record<string, string>>({});
 
   async function load(status: Tab = tab) {
     if (!session) return;
@@ -32,7 +33,12 @@ export function ApprovalsPage() {
     setBusy(nonce);
     setError(null);
     try {
-      await api.decideApproval(session, nonce, decision);
+      await api.decideApproval(session, nonce, decision, comments[nonce]);
+      setComments((prev) => {
+        const next = { ...prev };
+        delete next[nonce];
+        return next;
+      });
       await load("pending");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -80,24 +86,36 @@ export function ApprovalsPage() {
             {JSON.stringify(r.payload_summary || {}, null, 2)}
           </pre>
           {tab === "pending" && (
-            <div className="row">
-              <button
-                type="button"
-                className="primary"
-                disabled={busy === r.nonce}
-                onClick={() => void decide(r.nonce, "approved")}
-              >
-                Approve
-              </button>
-              <button
-                type="button"
-                className="danger"
-                disabled={busy === r.nonce}
-                onClick={() => void decide(r.nonce, "rejected")}
-              >
-                Reject
-              </button>
-            </div>
+            <>
+              <label htmlFor={`comment-${r.nonce}`}>Comment (optional)</label>
+              <textarea
+                id={`comment-${r.nonce}`}
+                rows={2}
+                value={comments[r.nonce] || ""}
+                onChange={(e) =>
+                  setComments((prev) => ({ ...prev, [r.nonce]: e.target.value }))
+                }
+                placeholder="เหตุผลก่อน Approve / Reject"
+              />
+              <div className="row">
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={busy === r.nonce}
+                  onClick={() => void decide(r.nonce, "approved")}
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  className="danger"
+                  disabled={busy === r.nonce}
+                  onClick={() => void decide(r.nonce, "rejected")}
+                >
+                  Reject
+                </button>
+              </div>
+            </>
           )}
         </div>
       ))}

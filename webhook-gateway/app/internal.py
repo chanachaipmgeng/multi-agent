@@ -82,6 +82,7 @@ class ApprovalBody(BaseModel):
 
 class DecideBody(BaseModel):
     decision: Literal["approved", "rejected"]
+    comment: str | None = None
 
 
 class ControlBody(BaseModel):
@@ -373,12 +374,15 @@ async def decide_approval(
             )
         except Exception:  # noqa: BLE001
             pass
+    audit_attrs: dict[str, Any] = {"nonce": nonce, "action": row.get("action")}
+    if body.comment:
+        audit_attrs["comment"] = body.comment.strip()[:2000]
     await store.audit(
         actor=f"human:{user_id}",
         event=f"approval.{body.decision}",
         trace_id=None,
         task_id=row["task_id"],
-        attrs={"nonce": nonce, "action": row.get("action")},
+        attrs=audit_attrs,
     )
     return {"status": body.decision, "task_id": row["task_id"], "state": new_state}
 

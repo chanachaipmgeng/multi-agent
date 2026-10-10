@@ -89,16 +89,50 @@ export const api = {
   },
   getTask: (s: Session, id: string) =>
     request<TaskRow>(s, `/internal/tasks/${encodeURIComponent(id)}`),
+  createTask: (
+    s: Session,
+    body: {
+      project: string;
+      type?: string;
+      assigned_to?: string;
+      instruction?: string;
+      labels?: string[];
+      skill?: string;
+      branch?: string;
+      idempotency_key?: string;
+    },
+  ) =>
+    request<{
+      status: string;
+      task_id?: string;
+      trace_id?: string;
+      assigned_to?: string;
+      skill?: string;
+    }>(s, "/internal/tasks", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
   listApprovals: (s: Session, status = "pending") =>
     request<{ approvals: ApprovalRow[]; count: number }>(
       s,
       `/internal/approvals?status=${encodeURIComponent(status)}`,
     ),
-  decideApproval: (s: Session, nonce: string, decision: "approved" | "rejected") =>
+  decideApproval: (
+    s: Session,
+    nonce: string,
+    decision: "approved" | "rejected",
+    comment?: string,
+  ) =>
     request<{ status: string; task_id: string }>(
       s,
       `/internal/approvals/${encodeURIComponent(nonce)}/decide`,
-      { method: "POST", body: JSON.stringify({ decision }) },
+      {
+        method: "POST",
+        body: JSON.stringify({
+          decision,
+          ...(comment?.trim() ? { comment: comment.trim() } : {}),
+        }),
+      },
     ),
   controlStatus: (s: Session) =>
     request<{ safe_mode: boolean; pause_all: boolean; paused_agents: string[] }>(

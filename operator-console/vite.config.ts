@@ -13,4 +13,14 @@ export default defineConfig({
       },
     },
   },
+  preview: {
+    port: 4173,
+    proxy: {
+      "/api": {
+        target: process.env.VITE_GATEWAY_PROXY || "http://127.0.0.1:8700",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ""),
+      },
+    },
+  },
 });

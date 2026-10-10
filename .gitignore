@@ -61,6 +61,9 @@ offline-pack/
 
 # --- one-off remote install helpers (passwords via env only; do not commit) ---
 scripts/_remote_*
+scripts/_local_dispatch_prove.py
+scripts/_fetch_key_tmp.py
+.tmp-console-key
 .tmp-minio.tar
 
 # --- misc --------------------------------------------------------------------
