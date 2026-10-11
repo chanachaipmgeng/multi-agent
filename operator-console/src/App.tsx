@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { api } from "./api";
 import { useAuth } from "./auth";
 import { LoginPage } from "./pages/LoginPage";
 import { TasksPage } from "./pages/TasksPage";
@@ -11,9 +12,20 @@ import { LinksPage } from "./pages/LinksPage";
 import { AuditPage } from "./pages/AuditPage";
 import { DispatchPage } from "./pages/DispatchPage";
 import { HomePage } from "./pages/HomePage";
+import { SystemPage } from "./pages/SystemPage";
 
 function Shell({ children }: { children: ReactNode }) {
-  const { session, logout } = useAuth();
+  const { session, setSession } = useAuth();
+
+  async function onLogout() {
+    try {
+      await api.logout();
+    } catch {
+      /* cookie may already be gone */
+    }
+    setSession(null);
+  }
+
   return (
     <div className="shell">
       <nav className="side">
@@ -36,6 +48,9 @@ function Shell({ children }: { children: ReactNode }) {
         <NavLink to="/control" className={({ isActive }) => (isActive ? "active" : "")}>
           Control
         </NavLink>
+        <NavLink to="/system" className={({ isActive }) => (isActive ? "active" : "")}>
+          System
+        </NavLink>
         <NavLink to="/projects" className={({ isActive }) => (isActive ? "active" : "")}>
           Projects
         </NavLink>
@@ -46,7 +61,7 @@ function Shell({ children }: { children: ReactNode }) {
         <div className="sub" style={{ fontSize: "0.8rem" }}>
           {session?.userName} · {session?.userId}
         </div>
-        <button type="button" onClick={logout}>
+        <button type="button" onClick={() => void onLogout()}>
           Logout
         </button>
       </nav>
@@ -56,7 +71,14 @@ function Shell({ children }: { children: ReactNode }) {
 }
 
 export function App() {
-  const { session } = useAuth();
+  const { session, ready } = useAuth();
+  if (!ready) {
+    return (
+      <div className="login card">
+        <p className="sub">Checking session…</p>
+      </div>
+    );
+  }
   if (!session) return <LoginPage />;
 
   return (
@@ -69,6 +91,7 @@ export function App() {
         <Route path="/approvals" element={<ApprovalsPage />} />
         <Route path="/audit" element={<AuditPage />} />
         <Route path="/control" element={<ControlPage />} />
+        <Route path="/system" element={<SystemPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/links" element={<LinksPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

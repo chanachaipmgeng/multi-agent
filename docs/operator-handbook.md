@@ -29,12 +29,13 @@
 | **ทำอะไร** | สั่งงานและควบคุมแพลตฟอร์มผ่าน gateway `/internal/*` เท่านั้น — ไม่แทน Grafana/Hermes |
 | **เมื่อไหร่** | ทุกวัน: สร้าง task, ดูบอร์ด, อนุมัติ, pause/safe-mode, ค้น audit |
 | **URL (LAN)** | `http://<host-ip>:8088` เช่น `http://10.50.0.117:8088` |
-| **Login** | **API key** = ไฟล์ `secrets/hermes_api_key` · **User ID** = คีย์ใน `config/rbac.yaml` (เช่น `987654321`) |
+| **Login** | **User ID** + **`console_secret`** จาก `config/rbac.yaml` (DECISION-21) — ไม่ใส่ Hermes API key ในเบราว์เซอร์ |
 
 ```bash
 cd /opt/emaw
-cat secrets/hermes_api_key
-grep -A5 '^users:' config/rbac.yaml
+# ดู user id / ตั้ง console_secret (อย่า commit ค่าจริง)
+grep -A20 '^users:' config/rbac.yaml
+# ตัวอย่างจาก rbac.example.yaml — หมุน secret บนโฮสต์หลังคัดลอก
 ```
 
 ### หน้าใน Console
@@ -47,6 +48,7 @@ grep -A5 '^users:' config/rbac.yaml
 | **Approvals** | กล่องอนุมัติ HITL (optional `comment`) |
 | **Audit** | ค้นเหตุการณ์ตาม `task_id` / `trace_id` |
 | **Control** | pause / resume / safe-mode |
+| **System** | heartbeat ราย adapter · ความลึกคิว · dead-letter (admin: retry / discard) |
 | **Projects** | รายการจาก `projects.yaml` (อ่านอย่างเดียว) |
 | **Links** | ทางลัด ops ครบ + อ้างคู่มือนี้ |
 

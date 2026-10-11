@@ -103,7 +103,9 @@ issue closed) · `200 duplicate` (same event UUID/delivery within 24 h) · `200 
 `XADD stream:tasks`). GitHub allowlist: `issues`, `workflow_run`, `workflow_job`.
 
 Operator Console: `make up-console` → http://127.0.0.1:8088 (or `make up-lan` + `CONSOLE_BIND=0.0.0.0`
-for LAN IP). Client of `/internal/*` only — see [`docs/operator-console.md`](docs/operator-console.md).
+for LAN IP). Client of `/internal/*` only — browser login is user id + `console_secret`
+(DECISION-21); see [`docs/operator-console.md`](docs/operator-console.md).
+LAN host checklist (firewall, systemd, backup timers): [`docs/runbooks/lan-host-7920.md`](docs/runbooks/lan-host-7920.md).
 Current-host next work: [`docs/roadmap-next.md`](docs/roadmap-next.md).
 
 Task envelope (design §4.3): `task_id`, `trace_id`, `type`, `project`, `source`, `requester`,
@@ -125,6 +127,8 @@ Task envelope (design §4.3): `task_id`, `trace_id`, `type`, `project`, `source`
 | Preflight / cloud switch | `make preflight` · `make up-cloud` (needs real LLM keys) · `make restart-adapters` |
 | D4.3/4/8 prep | `make ingress-render` · `make audit-export` · [docs/compliance-review.md](docs/compliance-review.md) |
 | Backup / restore (D4.5) | `make backup` · `make restore-drill BACKUP=…` · `docs/runbooks/restore.md` |
+| Console session auth (DECISION-21) | `console_secret` in `rbac.yaml` · `/internal/auth/*` · no Hermes key in browser |
+| LAN host systemd / timers (W5) | `deploy/systemd/` · `make install-host-units` · `docs/runbooks/lan-host-7920.md` |
 | Supply chain (D4.6) | digest-pinned images · `scripts/pin-digests.sh` · CI Trivy |
 | Observability (D4.1) | `make up-observability` · Grafana :3000 · 4 dashboards · Alertmanager → Telegram |
 | Redaction + sandbox gitleaks (D4.2) | adapter notify/audit · Promtail/OTel · `tools/gitleaks` mount |

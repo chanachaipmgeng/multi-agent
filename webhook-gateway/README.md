@@ -28,22 +28,33 @@ Ingress service of the Enterprise Multi-Agent Workspace. Dual SCM webhooks + int
 
 Other endpoints: `GET /healthz`, `GET /readyz`, `GET /metrics`.
 
-## Internal API (Phase 3 / DECISION-16 + DECISION-20)
+## Internal API (Phase 3 / DECISION-16 + DECISION-20 + DECISION-21)
 
-Bearer = `HERMES_API_KEY`; header `X-EMAW-User-Id` = Telegram user id. RBAC from `RBAC_FILE`.
+**Service callers** (coordinator, adapters, verify scripts): Bearer = `HERMES_API_KEY`;
+header `X-EMAW-User-Id` = Telegram user id. RBAC from `RBAC_FILE`.
+
+**Browser (Operator Console):** `POST /internal/auth/login` with per-user `console_secret`
+from `rbac.yaml` → `HttpOnly` session cookie + CSRF (`X-CSRF-Token` on mutating requests).
+See DECISION-21.
 
 | Method | Path | Purpose |
 |---|---|---|
+| POST | `/internal/auth/login` · `/logout` · GET `/me` | Console session (DECISION-21) |
 | POST | `/internal/tasks` | Telegram / console → Task envelope → `stream:tasks` |
 | GET | `/internal/tasks` · `/internal/tasks/{id}` | status-report + console detail (`payload_summary`, `links`, `paused_agents`) |
 | GET | `/internal/approvals` | list pending (Operator Console inbox) |
 | POST | `/internal/approvals` · `…/{nonce}/decide` | HITL (DECISION-17) |
 | GET | `/internal/control/status` | pause / safe-mode snapshot |
 | POST | `/internal/control/pause\|resume\|safe-mode` | kill switch / safe mode |
+| GET | `/internal/ops/summary` | Console Home strip |
+| GET | `/internal/ops/health` · `/queues` · `/dead-letter` | Console System page |
+| POST | `/internal/ops/dead-letter/{id}/retry\|discard` | admin DLQ actions (audited) |
 | GET | `/internal/projects` | allowlist from `projects.yaml` (redacted) |
+| GET | `/internal/rbac/users` | admin-only user list |
 | GET | `/internal/audit` | recent audit events (filter by `task_id`) |
 
 Operator Console SPA: `make up-console` → http://127.0.0.1:8088 — see [`docs/operator-console.md`](../docs/operator-console.md).
+Nginx proxies only `/api/internal/` and `/api/healthz`.
 
 ## Configuration (environment)
 
@@ -51,7 +62,9 @@ Operator Console SPA: `make up-console` → http://127.0.0.1:8088 — see [`docs
 |---|---|---|
 | `GITLAB_WEBHOOK_SECRET` / `GITLAB_WEBHOOK_SECRET_FILE` | — | **required** at boot |
 | `GITHUB_WEBHOOK_SECRET` / `GITHUB_WEBHOOK_SECRET_FILE` | — | optional at boot; required for `/webhook/github` |
-| `HERMES_API_KEY` / `HERMES_API_KEY_FILE` | — | internal API bearer |
+| `HERMES_API_KEY` / `HERMES_API_KEY_FILE` | — | internal API bearer (service callers) |
+| `SESSION_TTL_SECONDS` | `43200` | Console session TTL (DECISION-21) |
+| `SESSION_COOKIE_SECURE` | `false` | set `1` behind HTTPS |
 | `REDIS_URL` | `redis://localhost:6379/0` | |
 | `TASK_STREAM` | `stream:tasks` | |
 | `DATABASE_URL` | unset | `${PG_PASSWORD}` from `PG_PASSWORD_FILE` |

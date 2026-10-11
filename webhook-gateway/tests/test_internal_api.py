@@ -45,8 +45,16 @@ def rbac_file(tmp_path: Path) -> Path:
     p.write_text(
         """
 users:
-  987654321: { name: zeeme, roles: [admin, approver, developer], projects: ["*"] }
-  111: { name: viewer, roles: [viewer], projects: ["*"] }
+  987654321:
+    name: zeeme
+    roles: [admin, approver, developer]
+    projects: ["*"]
+    console_secret: "test-console-secret"
+  111:
+    name: viewer
+    roles: [viewer]
+    projects: ["*"]
+    console_secret: "viewer-console-secret"
 commands:
   route-task: { roles: [developer, admin] }
   status-report: { roles: [viewer, developer, admin] }
@@ -311,7 +319,9 @@ async def test_console_apis_approvals_projects_audit_control(client) -> None:
     assert audit.status_code == 200
     assert audit.json()["count"] >= 1
 
-    users = await ac.get("/internal/rbac/users", headers=_headers(111))
+    users_denied = await ac.get("/internal/rbac/users", headers=_headers(111))
+    assert users_denied.status_code == 403
+    users = await ac.get("/internal/rbac/users", headers=_headers())
     assert users.status_code == 200
     assert users.json()["count"] >= 1
 
@@ -369,6 +379,176 @@ async def test_operator_fixture_create_and_approval_history(client) -> None:
     history = await ac.get("/internal/approvals?status=decided", headers=_headers(111))
     assert history.status_code == 200
     assert any(a["nonce"] == nonce and a["decision"] == "approved" for a in history.json()["approvals"])
+
+
+async def test_console_session_login_csrf_and_no_impersonation(client) -> None:
+    """DECISION-21: cookie session binds user; forged X-EMAW-User-Id is ignored."""
+    ac, _store, _redis = client
+
+    bad = await ac.post(
+        "/internal/auth/login",
+        json={"user_id": 987654321, "console_secret": "wrong"},
+    )
+    assert bad.status_code == 401
+
+    login = await ac.post(
+        "/internal/auth/login",
+        json={"user_id": 111, "console_secret": "viewer-console-secret"},
+    )
+    assert login.status_code == 200, login.text
+    body = login.json()
+    assert body["user_id"] == 111 and body["csrf"]
+    assert "emaw_session=" in login.headers.get("set-cookie", "")
+
+    # Mutating without CSRF fails
+    pause = await ac.post("/internal/control/pause", json={"agent": "all"})
+    assert pause.status_code == 403
+
+    # Viewer session cannot pause even with CSRF + forged admin header
+    pause2 = await ac.post(
+        "/internal/control/pause",
+        headers={
+            "X-CSRF-Token": body["csrf"],
+            "X-EMAW-User-Id": "987654321",
+            "Content-Type": "application/json",
+        },
+        json={"agent": "all"},
+    )
+    assert pause2.status_code == 403
+
+    me = await ac.get("/internal/auth/me")
+    assert me.status_code == 200
+    assert me.json()["user_id"] == 111
+
+    # Service bearer path still works without a cookie on a fresh client header set
+    svc = await ac.get(
+        "/internal/projects",
+        headers={
+            "Authorization": "Bearer test-api-key",
+            "X-EMAW-User-Id": "987654321",
+        },
+    )
+    # Cookie from login is still on this client — session wins over bearer.
+    assert svc.status_code == 200
+
+    logout = await ac.post("/internal/auth/logout")
+    assert logout.status_code == 200
+
+    # After logout, service headers work for admin
+    svc2 = await ac.get(
+        "/internal/projects",
+        headers={
+            "Authorization": "Bearer test-api-key",
+            "X-EMAW-User-Id": "987654321",
+        },
+    )
+    assert svc2.status_code == 200
+
+
+async def test_console_admin_session_can_pause(client) -> None:
+    ac, _store, redis = client
+    login = await ac.post(
+        "/internal/auth/login",
+        json={"user_id": 987654321, "console_secret": "test-console-secret"},
+    )
+    assert login.status_code == 200
+    csrf = login.json()["csrf"]
+    r = await ac.post(
+        "/internal/control/pause",
+        headers={"X-CSRF-Token": csrf, "Content-Type": "application/json"},
+        json={"agent": "dev-frontend"},
+    )
+    assert r.status_code == 200, r.text
+    assert await redis.get(b"emaw:control:pause:dev-frontend")
+
+
+async def test_ops_health_queues_and_dlq_admin_actions(client) -> None:
+    """W4: health/queues/list; viewer cannot retry; admin retry + discard."""
+    import json as _json
+    import time
+
+    ac, store, redis = client
+
+    now = time.time()
+    await redis.set("emaw:heartbeat:router", str(now), ex=180)
+    await redis.set("emaw:heartbeat:adapter-dev-frontend", str(now), ex=180)
+    # leave other adapters missing → stale_count > 0
+
+    envelope = {
+        "task_id": "t-dlq-1",
+        "trace_id": "trace-dlq-1",
+        "type": "feature",
+        "project": "frontend-app",
+        "assigned_to": "dev-frontend",
+        "state": "FAILED",
+    }
+    dlq_id = await redis.xadd(
+        "stream:dead-letter",
+        {
+            "task_id": "t-dlq-1",
+            "trace_id": "trace-dlq-1",
+            "reason": "exceeded 3 deliveries",
+            "envelope": _json.dumps(envelope),
+            "source_message_id": "1-0",
+        },
+    )
+    dlq_id_s = dlq_id.decode() if isinstance(dlq_id, bytes) else str(dlq_id)
+
+    health = await ac.get("/internal/ops/health", headers=_headers(111))
+    assert health.status_code == 200, health.text
+    hb = health.json()
+    assert hb["redis_ok"] and hb["store_ok"]
+    assert hb["gateway"]["version"]
+    assert any(x["name"] == "router" and not x["stale"] for x in hb["heartbeats"])
+    assert hb["stale_count"] >= 1
+
+    queues = await ac.get("/internal/ops/queues", headers=_headers(111))
+    assert queues.status_code == 200
+    streams = {s["stream"]: s for s in queues.json()["streams"]}
+    assert streams["stream:dead-letter"]["length"] >= 1
+    assert "stream:tasks" in streams
+
+    listed = await ac.get("/internal/ops/dead-letter", headers=_headers(111))
+    assert listed.status_code == 200
+    assert any(e["id"] == dlq_id_s for e in listed.json()["entries"])
+
+    denied = await ac.post(
+        f"/internal/ops/dead-letter/{dlq_id_s}/retry", headers=_headers(111)
+    )
+    assert denied.status_code == 403
+
+    retried = await ac.post(
+        f"/internal/ops/dead-letter/{dlq_id_s}/retry", headers=_headers()
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["status"] == "retried"
+    assert await redis.xlen("stream:dead-letter") == 0
+    tasks = await redis.xrange("stream:tasks")
+    assert len(tasks) >= 1
+    assert any(e["event"] == "dlq.retried" for e in store.audit_events)
+
+    # seed another for discard
+    dlq2 = await redis.xadd(
+        "stream:dead-letter",
+        {
+            "task_id": "t-dlq-2",
+            "trace_id": "trace-dlq-2",
+            "reason": "boom",
+            "envelope": _json.dumps({**envelope, "task_id": "t-dlq-2"}),
+        },
+    )
+    dlq2_s = dlq2.decode() if isinstance(dlq2, bytes) else str(dlq2)
+    discarded = await ac.post(
+        f"/internal/ops/dead-letter/{dlq2_s}/discard", headers=_headers()
+    )
+    assert discarded.status_code == 200
+    assert discarded.json()["status"] == "discarded"
+    assert await redis.xlen("stream:dead-letter") == 0
+    assert any(e["event"] == "dlq.discarded" for e in store.audit_events)
+
+    summary = await ac.get("/internal/ops/summary", headers=_headers(111))
+    assert summary.status_code == 200
+    assert summary.json()["gateway"]["version"]
 
 
 async def test_metrics_task_state_gauge(client) -> None:

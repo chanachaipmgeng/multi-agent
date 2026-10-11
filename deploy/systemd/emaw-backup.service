@@ -1,0 +1,17 @@
+[Unit]
+Description=EMAW daily backup (DECISION-19)
+Documentation=file:///opt/emaw/docs/runbooks/restore.md
+After=docker.service emaw.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/emaw
+EnvironmentFile=-/opt/emaw/.env
+# Prefer /srv/emaw-backups (outside the git tree). Override in a drop-in if needed.
+Environment=BACKUP_ROOT=/srv/emaw-backups
+Environment=BACKUP_KEEP_DAYS=7
+ExecStart=/opt/emaw/scripts/host-backup-timed.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

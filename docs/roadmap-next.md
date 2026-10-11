@@ -29,51 +29,26 @@ Operator surfaces guide (TH): [operator-handbook.md](operator-handbook.md).
 
 ## Next work (priority order)
 
-Verified against current tree (not only the analysis note). Console calls only
-`/api/internal/*` plus `/api/healthz`. Gateway still trusts a shared bearer plus a
-client-supplied `X-EMAW-User-Id`. Worker adapters still pause-check once per batch.
+Verified against current tree. Console proxies only `/api/internal/*` + `/api/healthz`.
+Worker pause is per-message with mid-dispatch heartbeat. Browser auth is DECISION-21
+(session cookie); service callers still use Hermes bearer + `X-EMAW-User-Id`.
 
-One operator on this host may keep using today's login for drills. Do **not** hand
-Console to a second person until W3 (session) is in.
+### W0 — Close the LAN hole
 
-### W0 — Close the LAN hole (do first)
+**Repo (done):** nginx + Vite allowlist (`/api/internal/`, `/api/healthz` only).
 
-Host (7920, `/opt/emaw`) — no product code:
+**Host (7920, `/opt/emaw`) — still open:**
 
-1. **Firewall.** `ufw` was inactive when Console was bound to the LAN. Default deny,
-   allow OpenSSH, then allow the LAN CIDR to **8088, 3030, and 9119** only
-   (Console, Grafana, Hermes dashboard all follow `CONSOLE_BIND`). Leave Redis,
-   Postgres, MinIO, Hermes API, Prometheus, and gateway `:8700` off the LAN.
-2. **Rotate host secrets** that still have compose defaults if `.env` was never
-   filled: `GRAFANA_ADMIN_PASSWORD`, `MINIO_ROOT_PASSWORD`,
-   `SECRET_DASHBOARD_PASSWORD`, `SECRET_HERMES_API_KEY` (long random), then
-   `make secrets-dev` and recreate those services. Rotate the install SSH password.
-   Never commit the values.
-3. **Stay on CLI for infra.** Backup, restart, onboard, model pull stay `make` on
-   the host until a later decision says otherwise.
+1. **Firewall.** Default deny; allow OpenSSH; allow LAN CIDR to **8088, 3030, 9119**.
+2. **Rotate** compose-default passwords + `SECRET_HERMES_API_KEY` → `make secrets-dev` → recreate.
+3. **Redeploy** console + adapters after pull: rebuild `operator-console`, recreate workers.
+4. Prove from LAN: `/api/metrics` and `/api/webhook/gitlab` → 404; Console login with
+   `console_secret` works.
 
-Repo (small, then redeploy console on the host):
+### W1 — Pause must stop the worker
 
-4. **Nginx allowlist.** `operator-console/nginx.conf` `location /api/` proxies the
-   whole gateway, so with `CONSOLE_BIND=0.0.0.0` the LAN can reach
-   `/api/webhook/gitlab`, `/api/webhook/github`, `/api/metrics`, `/api/readyz`.
-   Proxy only `/api/internal/` and `/api/healthz`. Match the Vite dev proxy.
-   Exit: from the LAN, `/api/metrics` and `/api/webhook/gitlab` are 404; Home,
-   Dispatch, Approvals, and Links health still work.
-
-### W1 — Pause must stop the worker (code, before more Console features)
-
-`queue-adapter` `StreamConsumer.run_once` checks pause once, then `XREADGROUP
-count=10` and handles messages one by one. A long dispatch (timeout 1800s) means
-later messages in that batch ignore pause, and `emaw:heartbeat:*` (TTL 180s) goes
-stale so the adapter looks dead. The router already defers per message; workers do not.
-
-- Check pause (and do not start new work) before each message, including autoclaim.
-- Refresh heartbeat on a timer during dispatch, not only after the batch.
-- Exit: pause mid-batch does not dispatch the rest; heartbeat key stays fresh across
-  a long run; existing consumer tests still pass.
-- Do **not** raise per-role concurrency here. Two 16 GB GPUs and `qwen2.5-coder:14b`
-  at 64K context already cap the host around one or two in-flight calls.
+**Done in repo** (`queue-adapter`): pause before each message; requeue unstarted work;
+heartbeat every 30s during dispatch. Recreate adapters on the host to pick up the image.
 
 ### W2 — Measure Ollama on this host (compose env, not a new server)
 
@@ -83,52 +58,34 @@ stale so the adapter looks dead. The router already defers per message; workers 
 what `make local-free-check` still passes. Do not copy a guessed set into the
 default for every host. vLLM and a second inference stack stay out.
 
-### W3 — Session login (needs DECISION-21 before coding)
+### W3 — Session login (DECISION-21)
 
-DECISION-20 accepted a shared `HERMES_API_KEY` plus `X-EMAW-User-Id` for loopback
-v1, with Cloudflare Access later. LAN bind changed that: anyone with the key can
-send another user's id, and `/internal/rbac/users` lists ids and roles to any
-viewer. The key is the same one the six agents use, and the SPA stores it in
-`localStorage`.
+**Done in repo:** per-user `console_secret` in `rbac.yaml` → `POST /internal/auth/login`
+→ `HttpOnly` cookie + CSRF; SPA uses `credentials: "include"` (no Hermes key in
+browser). Service bearer path unchanged. `/internal/rbac/users` is admin-only.
 
-Write **DECISION-21** first. Proposed shape for this host (air-gap capable, no org IdP):
+**Host:** copy `console_secret` into live `config/rbac.yaml` (see `rbac.example.yaml`),
+rotate off the example values, restart gateway, rebuild console.
 
-- Gateway issues an `HttpOnly; Secure; SameSite=Strict` session bound to a user in
-  `config/rbac.yaml`. The browser never sees `HERMES_API_KEY`.
-- Browser requests are not authorized by a client-supplied user id. Coordinator and
-  adapters keep a server-side credential.
-- Roles stay viewer / developer / maintainer / approver / admin. Map a web user to
-  the existing Telegram id field so DECISION-8 still fits when Telegram is turned on.
-- CSRF on mutating POSTs.
-- Prod/cloud auth stays DECISION-20 (Cloudflare Access). Do not add Authentik,
-  Keycloak, or a second user database in this decision.
+Host must set `console_secret` before handing Console to a second person. DLQ
+retry/discard (W4) is admin-only and audited; still no settings write / restart UI.
 
-Exit: a non-admin session cannot decide an approver action or call pause; changing
-the user id in the client does nothing; Hermes key is absent from browser storage.
+### W4 — See health and the dead-letter stream
 
-Until W3 lands, do not add admin mutations (DLQ retry, settings write, restart).
+**Done in repo:** `GET /internal/ops/health|queues|dead-letter` + admin
+`POST …/retry|discard` (audited); Console **System** page at `/system` (poll ~20s).
+`ops_summary` version uses package `__version__`.
 
-### W4 — See health and the dead-letter stream (after W3)
-
-Thin `/internal/*` reads, then a Console page. No second UI.
-
-| Page | Source | v1 actions |
-|---|---|---|
-| System health | Redis `emaw:heartbeat:*`, gateway `/readyz` | Read-only |
-| Queue / DLQ | `XLEN` / `XPENDING` on `stream:*`, `stream:dead-letter` | List. Retry or discard is admin-only and audited |
-
-Live push (SSE/WebSocket) stays out of scope (DECISION-20: short poll). Task
-artifacts via a gateway presign can follow; do not publish MinIO.
+**Host:** rebuild/recreate gateway + console after pull. Live push / MinIO still out of scope.
 
 ### W5 — Host keeps running after reboot (7920 only)
 
-- systemd unit: `WorkingDirectory=/opt/emaw`, `ExecStart` the same `make up-lan`
-  the host already uses. `restart: unless-stopped` does not recreate profiles.
-- Daily `make backup`, weekly `make restore-drill` (DECISION-19). No restore button
-  on the web.
-- Keep `offline-pack/` and `backups/` outside the git worktree. Delete the stray
-  `backups/*;C` directory if it is still on the host (bad Windows path). Do not
-  commit those trees.
+**Done in repo:** `deploy/systemd/` (`emaw.service`, backup + restore-drill timers),
+`scripts/host-*-timed.sh`, `make install-host-units`, runbook
+[lan-host-7920.md](runbooks/lan-host-7920.md). Prefer `BACKUP_ROOT=/srv/emaw-backups`.
+
+**Host:** `sudo make install-host-units` → `enable --now emaw.service` + both timers.
+No restore button on the web. Delete any stray `backups/*;C` on the host if present.
 
 ### P1 — Real project onboard (local-free still)
 
@@ -160,7 +117,6 @@ Do not code until a DECISION note exists. Do not start these ahead of W3 — dep
 - Re-pack 14b offline kit from 7920 for true air-gap transfer hosts
 - Staging/prod cloud path remains [`deploy-linux-vm.md`](deploy-linux-vm.md) + `up-prod` (separate from this host)
 - Hot-reload of `projects.yaml` / `rbac.yaml` only if restart pain shows up after several real projects. YAML stays the git source. A Postgres settings UI is a separate decision, not the next step.
-- `ops_summary` version is hardcoded `"0.1.0"` while `webhook-gateway/app/__init__.py` already has `__version__` — fold into a touch of that handler, not its own project.
 
 ## Operator proof commands
 

@@ -1,0 +1,15 @@
+[Unit]
+Description=EMAW weekly restore-drill (DECISION-19)
+Documentation=file:///opt/emaw/docs/runbooks/restore.md
+After=docker.service emaw.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/emaw
+EnvironmentFile=-/opt/emaw/.env
+Environment=BACKUP_ROOT=/srv/emaw-backups
+ExecStart=/opt/emaw/scripts/host-restore-drill-timed.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

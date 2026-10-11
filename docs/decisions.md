@@ -123,9 +123,26 @@ Do **not** invent values. Field map and unlock order: [`docs/org-unblock.md`](or
 |---|---|
 | Scope | Thin console: Tasks, Approvals inbox, Control (pause/safe-mode), Projects (read-only), deep-links |
 | Client of | Gateway `/internal/*` only — does not replace Telegram as primary HITL (DECISION-17) |
-| Auth (local) | Shared `HERMES_API_KEY` bearer + `X-EMAW-User-Id` mapped from operator session / RBAC user picker |
+| Auth (local) | **Superseded for Console UI by DECISION-21** (session cookie). Service callers still use Hermes bearer + `X-EMAW-User-Id` |
 | Auth (prod) | Cloudflare Access on console hostname when DECISION-5 ready; Access identity → user id mapping |
 | Bind | `127.0.0.1` only in compose (profile `console`) |
 | Not in v1 | Meetings, knowledge graph, deploy wizard, YAML CRUD, MinIO browser |
 
 Roadmap C (after B stable): C1 deploy center → C2 review board → C3 meetings ops ritual → C4 knowledge graph (read-only). See [`docs/operator-console.md`](operator-console.md).
+
+## DECISION-21 — Operator Console session auth (LAN / air-gap)
+
+| Item | Decision |
+|---|---|
+| Problem | DECISION-20 loopback auth (shared `HERMES_API_KEY` + client `X-EMAW-User-Id`) allows impersonation once Console is on the LAN |
+| Browser auth | Per-user `console_secret` in `config/rbac.yaml` (same Telegram user id keys). `POST /internal/auth/login` → `HttpOnly` session cookie + CSRF token. Browser never receives `HERMES_API_KEY` |
+| Session store | Redis `emaw:session:{id}` (TTL configurable, default 12h). Cookie `emaw_session`, `SameSite=Strict`, `Secure` only when `SESSION_COOKIE_SECURE=1` (LAN HTTP keeps Secure off) |
+| CSRF | Synchronizer token in session; mutating requests from the browser must send `X-CSRF-Token` |
+| Service auth | Unchanged: `Authorization: Bearer <HERMES_API_KEY>` + `X-EMAW-User-Id` for coordinator / adapters / verify scripts on the control network |
+| Actor resolution | Prefer valid session cookie (ignore client user-id header). Else require Hermes bearer + `X-EMAW-User-Id` |
+| RBAC | Roles/commands unchanged. Web identity = existing Telegram user id so DECISION-8 still applies when Telegram is enabled |
+| Users list | `GET /internal/rbac/users` is **admin-only** (was any viewer — aided impersonation) |
+| Non-goals | No Authentik/Keycloak/OIDC in this decision; no second user database; no Cloudflare Access change (still DECISION-20 for prod hostname) |
+| Exit | Non-admin session cannot pause or approve beyond role; forging `X-EMAW-User-Id` in the browser does nothing while cookied; Hermes key absent from browser storage |
+
+See [`docs/operator-console.md`](operator-console.md) and roadmap W3 in [`docs/roadmap-next.md`](roadmap-next.md).

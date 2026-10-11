@@ -1,11 +1,11 @@
 ---
 name: verify-emaw
-description: Drive the EMAW platform (webhook-gateway, queue adapters, Hermes agents, observability, Operator Console, local-free/air-gap/LAN-hybrid LLM) the way an operator would — HTTP + make smoke checks. Use when proving a change to compose, gateway, adapters, metrics, Grafana, console, CONSOLE_BIND/up-lan, or offline pack/load; or when /poteto-mode needs a scripted green/red check.
+description: Drive the EMAW platform (webhook-gateway, queue adapters, Hermes agents, observability, Operator Console, local-free/air-gap/LAN-hybrid LLM, host systemd/backup) the way an operator would — HTTP + make smoke checks. Use when proving a change to compose, gateway, adapters, metrics, Grafana, console session auth, System/ops APIs, CONSOLE_BIND/up-lan, offline pack/load, or host units; or when /poteto-mode needs a scripted green/red check.
 ---
 
 # Verify EMAW (operator surface)
 
-Primary surface: **HTTP services** + **Makefile smoke**. Secondary: Grafana UI and Operator Console (`make up-console` / `up-lan` → `:8088`). Core proofs are curl/make exit codes and JSON bodies; console is HTTP reachability plus `/internal/*` clients (Dispatch = `POST /internal/tasks`).
+Primary surface: **HTTP services** + **Makefile smoke**. Secondary: Grafana UI and Operator Console (`make up-console` / `up-lan` → `:8088`). Core proofs are curl/make exit codes and JSON bodies. Browser login uses `console_secret` (DECISION-21); verify scripts use the **service** bearer path (`HERMES_API_KEY` + `X-EMAW-User-Id`). Console surfaces include Dispatch, Home summary, and System (`/internal/ops/health|queues|dead-letter`).
 
 Never drive a stack you did not start for this run when isolation matters. The default compose project is shared on this host; prefer **doctor** before mutating, and use pause/resume only through documented internal API with a recorded RUN_ID.
 
@@ -74,7 +74,7 @@ Location: `.cursor/skills/verify-emaw/evidence/<RUN_ID>/` (gitignored).
 
 Proof standards:
 
-- Exercise the real operator path (`/healthz`, `/metrics`, `make phase3-check`, `/webhook/gitlab` or `/webhook/github`, `/internal/control/*`, `/internal/projects`).
+- Exercise the real operator path (`/healthz`, `/metrics`, `make phase3-check`, `/webhook/gitlab` or `/webhook/github`, `/internal/control/*`, `/internal/projects`, `/internal/ops/summary`, `/internal/ops/health`).
 - Capture **command + stdout + exit code** (and HTTP body for API calls).
 - For mutations (webhook enqueue, pause): capture a **second read** (task list / redis key / metrics) showing the effect.
 - Do not treat `dry-run` adapters as success for Hermes live dispatch unless the feature file says so.

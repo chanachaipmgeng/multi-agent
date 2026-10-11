@@ -13,21 +13,29 @@ alwaysApply: true
 - Adapters enrich via `ScmClient` (GitLabClient | GitHubClient). Prefer shared abstractions over duplicating host-specific paths.
 - Never log webhook secrets or PATs. GitHub webhook returns `503` when secret unset — that is intentional.
 
-## Operator Console (DECISION-20)
+## Operator Console (DECISION-20 + DECISION-21)
 
 - Thin SPA under `operator-console/` — client of gateway `/internal/*` only. Does **not** replace Telegram HITL or Grafana.
-- Run: `make up-console` → `http://127.0.0.1:8088` (compose profile `console`). Auth: `HERMES_API_KEY` + `X-EMAW-User-Id` from `config/rbac.yaml`.
-- Screens include **Home** (`GET /internal/ops/summary`), Tasks (table/board), **Dispatch** (`POST /internal/tasks`), Approvals (optional `comment` on decide), Audit, Control, Projects.
+- Run: `make up-console` → `http://127.0.0.1:8088` (compose profile `console`).
+- **Browser auth (DECISION-21):** Telegram user id + per-user `console_secret` in `config/rbac.yaml` → session cookie + CSRF. SPA never stores `HERMES_API_KEY`.
+- **Service auth:** coordinator / adapters / verify scripts keep `Authorization: Bearer <HERMES_API_KEY>` + `X-EMAW-User-Id` on the control network.
+- Nginx (and Vite) proxy only `/api/internal/` and `/api/healthz` — not webhooks or `/metrics` (safe with `CONSOLE_BIND=0.0.0.0`).
+- Screens: **Home** (`GET /internal/ops/summary`), Tasks, **Dispatch**, Approvals, Audit, Control, **System** (`/internal/ops/health|queues|dead-letter`; admin retry/discard), Projects, Links.
 - Extend console by adding gateway internal APIs first, then thin UI. Roadmap C1–C4 needs a DECISION + exit criteria before coding (see `docs/operator-console.md`). Do **not** add a second Streamlit/`/api/*` control plane for the same job.
 - Design §2.4: console is an allowed operator surface, not a second control plane.
 - **Air-gap / offline hosts:** Console is the primary HITL (no Telegram). Bring-up via `make up-offline`. Do **not** use `make up-prod` (expects OpenRouter + cloudflared). See `docs/offline-airgap.md`.
-- **LAN + local LLM hybrid (online host, Ollama, no cloudflared):** `CONSOLE_BIND=0.0.0.0` + `make up-lan` → Console on `http://<host-ip>:8088`. Same bind publishes Grafana + Hermes dashboard. Firewall to LAN CIDR. Keep Redis/Postgres/MinIO/Hermes API/Prometheus on loopback. Next-work list: `docs/roadmap-next.md`.
+- **LAN + local LLM hybrid (online host, Ollama, no cloudflared):** `CONSOLE_BIND=0.0.0.0` + `make up-lan` → Console on `http://<host-ip>:8088`. Same bind publishes Grafana + Hermes dashboard. Firewall to LAN CIDR. Keep Redis/Postgres/MinIO/Hermes API/Prometheus on loopback. Host checklist: `docs/runbooks/lan-host-7920.md`. Next-work list: `docs/roadmap-next.md`.
 
 ## Local-free / air-gap LLM (DECISION-15)
 
 - All 6 agents → `inference-ollama` via `docker-compose.local-free.yml` (NVIDIA `count: all`). Bare `onprem-llm` has no GPU stanza — always use local-free / `up-offline` / `up-lan`.
 - `LOCAL_LLM_MODEL` / `LOCAL_LLM_FALLBACK` sync into `hermes-data/*/config.local-free.yaml` via `scripts/sync-local-llm-model.sh` (`make sync-local-llm`). Dev default 7b; dual 16 GB VRAM hosts prefer **14b**.
 - Pack/load (true air-gap): `make pack-offline` → transfer → `make load-offline` → `make up-offline`. Online GPU hosts with local LLM: `make up-lan` (no pack required). Prove with verify-emaw feature `local-free-offline`.
+
+## Host packaging (W5)
+
+- systemd units under `deploy/systemd/` (`emaw.service`, backup + restore-drill timers). Install: `sudo make install-host-units` on `/opt/emaw`. Prefer `BACKUP_ROOT=/srv/emaw-backups` outside the git tree.
+- Worker adapters check pause before each message and refresh heartbeats during long dispatch (`queue-adapter`).
 
 ## Docs / skills source of truth
 

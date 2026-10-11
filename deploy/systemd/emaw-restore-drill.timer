@@ -1,0 +1,11 @@
+[Unit]
+Description=EMAW weekly restore-drill timer
+Documentation=file:///opt/emaw/docs/runbooks/lan-host-7920.md
+
+[Timer]
+OnCalendar=Sun *-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=15m
+
+[Install]
+WantedBy=timers.target

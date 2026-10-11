@@ -3,9 +3,22 @@
 # real Telegram user ids. Separation of duties: `approver` is never also `developer` on the same
 # repo in production (DECISION-8) — the admin bootstrap user below is the only exception for the pilot.
 users:
-  987654321: { name: "zeeme", roles: [admin, approver, developer], projects: ["*"] }   # pilot bootstrap
-  111222333: { name: "fe-dev-1", roles: [developer], projects: ["frontend-app"] }
-  444555666: { name: "qa-lead",  roles: [viewer],    projects: ["*"] }
+  # console_secret = Operator Console login (DECISION-21); never reuse HERMES_API_KEY.
+  987654321:
+    name: "zeeme"
+    roles: [admin, approver, developer]
+    projects: ["*"]
+    console_secret: "change-me-console-zeeme"   # pilot bootstrap — rotate on host
+  111222333:
+    name: "fe-dev-1"
+    roles: [developer]
+    projects: ["frontend-app"]
+    console_secret: "change-me-console-fe-dev"
+  444555666:
+    name: "qa-lead"
+    roles: [viewer]
+    projects: ["*"]
+    # no console_secret → Telegram/service only; cannot web-login
 
 roles:
   viewer:     { description: "ask status, read reports" }

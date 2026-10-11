@@ -8,6 +8,7 @@ Includes Dispatch (`POST /internal/tasks`) and Home summary (`GET /internal/ops/
 - Gateway up with `HERMES_API_KEY` and `config/rbac.yaml` (admin user `987654321` or `VERIFY_EMAW_USER_ID`).
 - Optional: `make up-console` or `make up-lan` for HTTP `:8088` (build needs Docker).
 - LAN hybrid: `CONSOLE_BIND=0.0.0.0` — also prove `http://<host-ip>:8088/` → 200.
+- Browser login (DECISION-21) uses `console_secret` in rbac — verify scripts below still use the **service** bearer path (correct).
 
 ## Steps
 
@@ -75,6 +76,33 @@ curl -fsS -H "Authorization: Bearer $HERMES_API_KEY" \
 
 Expect `gateway.status` = `ok`, keys `approvals_pending`, `tasks_by_state`, `tasks_recent`, `control`.
 
+8. System / ops health (Console **System** page):
+
+```bash
+curl -fsS -H "Authorization: Bearer $HERMES_API_KEY" \
+  -H "X-EMAW-User-Id: ${VERIFY_EMAW_USER_ID:-987654321}" \
+  "$GATEWAY_URL/internal/ops/health" | tee evidence/ops-health.json
+curl -fsS -H "Authorization: Bearer $HERMES_API_KEY" \
+  -H "X-EMAW-User-Id: ${VERIFY_EMAW_USER_ID:-987654321}" \
+  "$GATEWAY_URL/internal/ops/queues" | tee evidence/ops-queues.json
+curl -fsS -H "Authorization: Bearer $HERMES_API_KEY" \
+  -H "X-EMAW-User-Id: ${VERIFY_EMAW_USER_ID:-987654321}" \
+  "$GATEWAY_URL/internal/ops/dead-letter?limit=20" | tee evidence/ops-dlq.json
+```
+
+Expect `redis_ok` / `store_ok` booleans and a `heartbeats` array; `streams` non-empty for queues.
+
+9. Optional browser session (DECISION-21) — only when proving UI login, not required for helper green:
+
+```bash
+# Needs console_secret on the VERIFY user in config/rbac.yaml
+curl -fsS -c /tmp/emaw-console.jar -H "Content-Type: application/json" \
+  -d "{\"user_id\":${VERIFY_EMAW_USER_ID:-987654321},\"console_secret\":\"$VERIFY_EMAW_CONSOLE_SECRET\"}" \
+  "$GATEWAY_URL/internal/auth/login" | tee evidence/auth-login.json
+```
+
+Skip step 9 if `VERIFY_EMAW_CONSOLE_SECRET` is unset.
+
 ## Pass
 
-- Steps 1–4 succeed (step 4 audit only when ≥1 task exists); step 5 when `operator-console` is running; step 6 when proving Dispatch; step 7 when proving Home.
+- Steps 1–4 succeed (step 4 audit only when ≥1 task exists); step 5 when `operator-console` is running; step 6 when proving Dispatch; step 7 when proving Home; step 8 when proving System/ops; step 9 only when console_secret is provided.

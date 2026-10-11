@@ -13,6 +13,8 @@ class RbacUser(BaseModel):
     name: str = ""
     roles: list[str] = Field(default_factory=list)
     projects: list[str] = Field(default_factory=list)  # ["*"] or project keys
+    # DECISION-21 — per-user Console login secret (never the Hermes API key).
+    console_secret: str | None = None
 
 
 class RbacPolicy(BaseModel):

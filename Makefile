@@ -183,8 +183,11 @@ worktree-clean: ## prune worktrees idle > 7 days (D2.4)
 	@scripts/worktree-cleanup.sh
 
 down: ## stop everything (keeps volumes)
-	$(COMPOSE_LOCAL_FREE) --profile agents --profile ingress --profile onprem-llm --profile socraticode --profile observability --profile single down
-	$(COMPOSE) --profile agents --profile ingress --profile onprem-llm --profile socraticode --profile observability --profile single down
+	$(COMPOSE_LOCAL_FREE) --profile agents --profile ingress --profile onprem-llm --profile socraticode --profile observability --profile console --profile single down
+	$(COMPOSE) --profile agents --profile ingress --profile onprem-llm --profile socraticode --profile observability --profile console --profile single down
+
+install-host-units: ## W5: copy systemd units to /etc (sudo); does not enable
+	@scripts/install-host-units.sh
 
 logs: ## tail gateway + router + adapter logs
 	$(COMPOSE) logs -f webhook-gateway router adapter-dev-backend
@@ -258,4 +261,4 @@ skill-accept-sandbox: ## ≥3 sandbox-smoke skill-acceptance drills (needs emaw-
 test-scripts: ## render-ingress unit tests (needs PyYAML)
 	@$(PY) -m pytest -q scripts/test_render_ingress.py
 
-.PHONY: help prereqs bootstrap venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-console up-socraticode socraticode-check up-local-free up-offline up-lan pack-offline load-offline sync-local-llm preflight-offline offline-acceptance warm-socraticode-npm restart-adapters up-cloud dev-flow-live local-llm-pull local-free-check preflight ingress-render audit-export audit-verify up-prod phase3-check backup restore-drill restore worktree-clean down logs outbox ps migrate dev-tunnel tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration test-scripts lint gitleaks webhook-test simulate-operator verify-phase0 skill-accept-sandbox
+.PHONY: help prereqs bootstrap venv hooks secrets-init secrets-encrypt secrets-decrypt secrets-dev up up-agents hermes-seed up-ingress up-observability up-console up-socraticode socraticode-check up-local-free up-offline up-lan pack-offline load-offline sync-local-llm preflight-offline offline-acceptance warm-socraticode-npm restart-adapters up-cloud dev-flow-live local-llm-pull local-free-check preflight ingress-render audit-export audit-verify up-prod phase3-check backup restore-drill restore worktree-clean down install-host-units logs outbox ps migrate dev-tunnel tunnel-setup tunnel-status gitlab-webhook gitlab-token-check hermes-configure skills-sync skills-check onboard test test-integration test-scripts lint gitleaks webhook-test simulate-operator verify-phase0 skill-accept-sandbox

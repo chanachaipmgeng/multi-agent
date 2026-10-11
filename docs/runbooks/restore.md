@@ -13,11 +13,25 @@
 
 ```bash
 make backup                 # → backups/<UTC-ts>/postgres.dump + *.tar.gz + manifest.json
+# Prefer a path outside the git tree (LAN host / W5):
+# BACKUP_DIR=/srv/emaw-backups make backup
 # Optional remote:
 # RESTIC_REPOSITORY=s3:… RESTIC_PASSWORD=… make backup
 ```
 
 Verify: `cat backups/<ts>/manifest.json` — `task_count` and `sha256` present.
+
+### Automated (systemd timers on LAN host)
+
+See [lan-host-7920.md](lan-host-7920.md) §4 and units under `deploy/systemd/`:
+
+- `emaw-backup.timer` — daily `scripts/host-backup-timed.sh` (prune > 7 days)
+- `emaw-restore-drill.timer` — weekly drill on newest backup with `manifest.json`
+
+```bash
+sudo make install-host-units
+sudo systemctl enable --now emaw-backup.timer emaw-restore-drill.timer
+```
 
 ## Restore drill (safe, non-destructive)
 

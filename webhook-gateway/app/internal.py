@@ -1,7 +1,9 @@
 """Internal control-plane API for the coordinator (Phase 3 / DECISION-16).
 
-Authenticated with ``Authorization: Bearer <hermes_api_key>`` and
-``X-EMAW-User-Id: <telegram_user_id>``. Reachable only on the ``control`` network.
+Service callers: ``Authorization: Bearer <hermes_api_key>`` +
+``X-EMAW-User-Id: <telegram_user_id>``.
+Browser (DECISION-21): session cookie from ``POST /internal/auth/login``.
+Reachable only on the ``control`` network (or via Console nginx allowlist).
 """
 
 from __future__ import annotations
@@ -13,9 +15,10 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
+from . import __version__
 from .envelope import (
     DEFAULT_SKILL_FOR_TYPE,
     WORKER_CONSTRAINTS,
@@ -28,7 +31,25 @@ from .envelope import (
     new_task_id,
     new_trace_id,
 )
+from .ops_status import (
+    collect_health,
+    collect_queues,
+    discard_dead_letter,
+    list_dead_letters,
+    retry_dead_letter,
+)
 from .rbac import RbacPolicy
+from .session_auth import (
+    COOKIE_NAME,
+    clear_session_cookie,
+    create_session,
+    destroy_session,
+    load_session,
+    resolve_actor,
+    secrets_equal,
+    session_public,
+    set_session_cookie,
+)
 from .store import KNOWN_PAUSE_AGENTS, safe_payload_summary
 
 log = logging.getLogger("emaw.gateway.internal")
@@ -53,6 +74,20 @@ def _user_id(x_emaw_user_id: str | None) -> int:
     if not x_emaw_user_id or not x_emaw_user_id.strip().isdigit():
         raise HTTPException(400, detail="X-EMAW-User-Id required (telegram user id)")
     return int(x_emaw_user_id.strip())
+
+
+async def _actor(
+    request: Request,
+    authorization: str | None,
+    x_emaw_user_id: str | None,
+) -> int:
+    return await resolve_actor(
+        request,
+        authorization,
+        x_emaw_user_id,
+        require_hermes_bearer=_require_auth,
+        parse_user_id=_user_id,
+    )
 
 
 def _rbac(request: Request) -> RbacPolicy:
@@ -90,6 +125,90 @@ class ControlBody(BaseModel):
     enabled: bool | None = None  # for safe-mode
 
 
+class LoginBody(BaseModel):
+    user_id: int
+    console_secret: str
+
+
+# -------------------------------------------------------------- auth (browser)
+@router.post("/auth/login")
+async def auth_login(body: LoginBody, request: Request, response: Response) -> dict[str, Any]:
+    """Exchange per-user console_secret for a session cookie (DECISION-21)."""
+    policy = _rbac(request)
+    user = policy.user(body.user_id)
+    if user is None or not user.console_secret:
+        raise HTTPException(401, detail="invalid_credentials")
+    if not secrets_equal(user.console_secret, body.console_secret):
+        raise HTTPException(401, detail="invalid_credentials")
+
+    settings = request.app.state.settings
+    sid, session = await create_session(
+        request.app.state.redis,
+        user_id=int(body.user_id),
+        ttl_seconds=settings.session_ttl_seconds,
+    )
+    set_session_cookie(
+        response,
+        session_id=sid,
+        ttl_seconds=settings.session_ttl_seconds,
+        secure=settings.session_cookie_secure,
+    )
+    await request.app.state.store.audit(
+        actor="operator-console",
+        event="auth.login",
+        trace_id=None,
+        task_id=None,
+        attrs={"user_id": int(body.user_id), "name": user.name},
+    )
+    return session_public(int(body.user_id), user.name, list(user.roles), session.csrf)
+
+
+@router.post("/auth/logout")
+async def auth_logout(request: Request, response: Response) -> dict[str, str]:
+    settings = request.app.state.settings
+    sid = request.cookies.get(COOKIE_NAME)
+    session = await load_session(request.app.state.redis, sid)
+    await destroy_session(request.app.state.redis, sid)
+    clear_session_cookie(response, secure=settings.session_cookie_secure)
+    if session is not None:
+        await request.app.state.store.audit(
+            actor="operator-console",
+            event="auth.logout",
+            trace_id=None,
+            task_id=None,
+            attrs={"user_id": session.user_id},
+        )
+    return {"status": "ok"}
+
+
+@router.get("/auth/me")
+async def auth_me(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
+) -> dict[str, Any]:
+    """Current actor — session preferred; service bearer still works (no CSRF on GET)."""
+    sid = request.cookies.get(COOKIE_NAME)
+    session = await load_session(request.app.state.redis, sid)
+    if session is not None:
+        user = _rbac(request).user(session.user_id)
+        if user is None:
+            raise HTTPException(401, detail="session_user_unknown")
+        return session_public(session.user_id, user.name, list(user.roles), session.csrf)
+
+    user_id = await _actor(request, authorization, x_emaw_user_id)
+    user = _rbac(request).user(user_id)
+    if user is None:
+        raise HTTPException(403, detail="user_not_in_rbac")
+    return {
+        "user_id": user_id,
+        "name": user.name,
+        "roles": list(user.roles),
+        "csrf": None,
+        "auth": "service",
+    }
+
+
 # --------------------------------------------------------------------- tasks
 @router.post("/tasks")
 async def create_task(
@@ -98,8 +217,7 @@ async def create_task(
     authorization: str | None = Header(default=None),
     x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
 ) -> dict[str, Any]:
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
+    user_id = await _actor(request, authorization, x_emaw_user_id)
     ok, reason = _rbac(request).authorize(user_id, "route-task", body.project)
     if not ok:
         raise HTTPException(403, detail=reason)
@@ -192,8 +310,7 @@ async def list_tasks(
     state: str | None = None,
     limit: int = 50,
 ) -> dict[str, Any]:
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
+    user_id = await _actor(request, authorization, x_emaw_user_id)
     ok, reason = _rbac(request).authorize(user_id, "status-report", project)
     if not ok:
         raise HTTPException(403, detail=reason)
@@ -209,8 +326,7 @@ async def get_task(
     authorization: str | None = Header(default=None),
     x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
 ) -> dict[str, Any]:
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
+    user_id = await _actor(request, authorization, x_emaw_user_id)
     ok, reason = _rbac(request).authorize(user_id, "status-report")
     if not ok:
         raise HTTPException(403, detail=reason)
@@ -228,8 +344,7 @@ async def request_approval(
     authorization: str | None = Header(default=None),
     x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
 ) -> dict[str, Any]:
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
+    user_id = await _actor(request, authorization, x_emaw_user_id)
     # Creating an approval request is allowed for coordinator / developers
     ok, reason = _rbac(request).authorize(user_id, "approve-push")
     # Also allow admin
@@ -279,8 +394,7 @@ async def list_approvals(
     task_id: str | None = None,
     limit: int = 50,
 ) -> dict[str, Any]:
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
+    user_id = await _actor(request, authorization, x_emaw_user_id)
     ok, reason = _rbac(request).authorize(user_id, "status-report")
     if not ok:
         raise HTTPException(403, detail=reason)
@@ -297,8 +411,7 @@ async def get_approval(
     authorization: str | None = Header(default=None),
     x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
 ) -> dict[str, Any]:
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
+    user_id = await _actor(request, authorization, x_emaw_user_id)
     ok, reason = _rbac(request).authorize(user_id, "status-report")
     if not ok:
         raise HTTPException(403, detail=reason)
@@ -316,8 +429,7 @@ async def decide_approval(
     authorization: str | None = Header(default=None),
     x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
 ) -> dict[str, Any]:
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
+    user_id = await _actor(request, authorization, x_emaw_user_id)
     store = request.app.state.store
     row = await store.get_approval(nonce)
     if row is None:
@@ -395,8 +507,7 @@ async def control_pause(
     authorization: str | None = Header(default=None),
     x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
 ) -> dict[str, Any]:
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
+    user_id = await _actor(request, authorization, x_emaw_user_id)
     ok, reason = _rbac(request).authorize(user_id, "pause")
     if not ok:
         raise HTTPException(403, detail=reason)
@@ -420,8 +531,7 @@ async def control_resume(
     authorization: str | None = Header(default=None),
     x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
 ) -> dict[str, Any]:
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
+    user_id = await _actor(request, authorization, x_emaw_user_id)
     ok, reason = _rbac(request).authorize(user_id, "resume")
     if not ok:
         # fall back to pause permission (admin)
@@ -448,8 +558,7 @@ async def control_safe_mode(
     authorization: str | None = Header(default=None),
     x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
 ) -> dict[str, Any]:
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
+    user_id = await _actor(request, authorization, x_emaw_user_id)
     ok, reason = _rbac(request).authorize(user_id, "safe-mode")
     if not ok:
         raise HTTPException(403, detail=reason)
@@ -475,8 +584,7 @@ async def control_status(
     authorization: str | None = Header(default=None),
     x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
 ) -> dict[str, Any]:
-    _require_auth(request, authorization)
-    _user_id(x_emaw_user_id)
+    await _actor(request, authorization, x_emaw_user_id)
     prefix = request.app.state.settings.control_prefix
     redis = request.app.state.redis
     paused_agents: list[str] = []
@@ -496,8 +604,7 @@ async def list_projects(
     authorization: str | None = Header(default=None),
     x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
 ) -> dict[str, Any]:
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
+    user_id = await _actor(request, authorization, x_emaw_user_id)
     ok, reason = _rbac(request).authorize(user_id, "status-report")
     if not ok:
         raise HTTPException(403, detail=reason)
@@ -532,8 +639,7 @@ async def list_audit(
     trace_id: str | None = None,
     limit: int = 100,
 ) -> dict[str, Any]:
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
+    user_id = await _actor(request, authorization, x_emaw_user_id)
     ok, reason = _rbac(request).authorize(user_id, "status-report")
     if not ok:
         raise HTTPException(403, detail=reason)
@@ -551,18 +657,17 @@ async def list_rbac_users(
     authorization: str | None = Header(default=None),
     x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
 ) -> dict[str, Any]:
-    """Dev helper for the console user picker (ids + names + roles only)."""
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
-    ok, reason = _rbac(request).authorize(user_id, "status-report")
-    if not ok:
-        raise HTTPException(403, detail=reason)
+    """List RBAC users (admin only — DECISION-21)."""
+    user_id = await _actor(request, authorization, x_emaw_user_id)
+    if not _rbac(request).has_role(user_id, "admin"):
+        raise HTTPException(403, detail="admin_required")
     policy = _rbac(request)
     users = [
         {
             "user_id": int(uid) if str(uid).isdigit() else uid,
             "name": u.name,
             "roles": list(u.roles),
+            "has_console_secret": bool(u.console_secret),
         }
         for uid, u in policy.users.items()
     ]
@@ -577,8 +682,7 @@ async def ops_summary(
     recent_limit: int = 12,
 ) -> dict[str, Any]:
     """Aggregated Home strip for Operator Console (viewer+ via status-report)."""
-    _require_auth(request, authorization)
-    user_id = _user_id(x_emaw_user_id)
+    user_id = await _actor(request, authorization, x_emaw_user_id)
     ok, reason = _rbac(request).authorize(user_id, "status-report")
     if not ok:
         raise HTTPException(403, detail=reason)
@@ -609,7 +713,7 @@ async def ops_summary(
     by_state = await store.count_by_state()
 
     return {
-        "gateway": {"status": "ok", "version": "0.1.0"},
+        "gateway": {"status": "ok", "version": __version__},
         "redis_ok": redis_ok,
         "store_enabled": bool(getattr(store, "enabled", True)),
         "control": {
@@ -633,3 +737,125 @@ async def ops_summary(
             for t in recent
         ],
     }
+
+
+# -------------------------------------------------------------- ops (W4)
+@router.get("/ops/health")
+async def ops_health(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
+) -> dict[str, Any]:
+    """Adapter/router heartbeats + redis/store readiness (viewer+)."""
+    user_id = await _actor(request, authorization, x_emaw_user_id)
+    ok, reason = _rbac(request).authorize(user_id, "status-report")
+    if not ok:
+        raise HTTPException(403, detail=reason)
+    store_ok = False
+    try:
+        store_ok = bool(await request.app.state.store.ping())
+    except Exception:  # noqa: BLE001
+        store_ok = False
+    body = await collect_health(request.app.state.redis, store_ok=store_ok)
+    body["gateway"] = {"status": "ok", "version": __version__}
+    return body
+
+
+@router.get("/ops/queues")
+async def ops_queues(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
+) -> dict[str, Any]:
+    """Stream depths and consumer-group pending counts (viewer+)."""
+    user_id = await _actor(request, authorization, x_emaw_user_id)
+    ok, reason = _rbac(request).authorize(user_id, "status-report")
+    if not ok:
+        raise HTTPException(403, detail=reason)
+    return await collect_queues(request.app.state.redis)
+
+
+@router.get("/ops/dead-letter")
+async def ops_dead_letter_list(
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Recent dead-letter entries (viewer+; no full envelope dump)."""
+    user_id = await _actor(request, authorization, x_emaw_user_id)
+    ok, reason = _rbac(request).authorize(user_id, "status-report")
+    if not ok:
+        raise HTTPException(403, detail=reason)
+    return await list_dead_letters(request.app.state.redis, limit=limit)
+
+
+@router.post("/ops/dead-letter/{message_id}/retry")
+async def ops_dead_letter_retry(
+    message_id: str,
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
+) -> dict[str, Any]:
+    """Re-queue a dead-letter entry onto stream:tasks (admin)."""
+    user_id = await _actor(request, authorization, x_emaw_user_id)
+    if not _rbac(request).has_role(user_id, "admin"):
+        raise HTTPException(403, detail="admin_required")
+    settings = request.app.state.settings
+    try:
+        result = await retry_dead_letter(
+            request.app.state.redis,
+            message_id,
+            task_stream=settings.task_stream,
+            maxlen=settings.task_stream_maxlen,
+        )
+    except KeyError:
+        raise HTTPException(404, detail="dead_letter_not_found") from None
+    except ValueError as exc:
+        raise HTTPException(400, detail=str(exc)) from None
+
+    task_id = result["task_id"]
+    if task_id and task_id != "?":
+        try:
+            await request.app.state.store.set_state(task_id, "QUEUED")
+        except Exception:  # noqa: BLE001 — task may be absent from store
+            log.debug("set_state QUEUED after dlq retry failed for %s", task_id, exc_info=True)
+
+    await request.app.state.store.audit(
+        actor="operator-console",
+        event="dlq.retried",
+        trace_id=result.get("trace_id") or None,
+        task_id=task_id if task_id != "?" else None,
+        attrs={
+            "dead_letter_id": message_id,
+            "stream_id": result.get("stream_id"),
+            "by_user": user_id,
+        },
+    )
+    return {"status": "retried", **result}
+
+
+@router.post("/ops/dead-letter/{message_id}/discard")
+async def ops_dead_letter_discard(
+    message_id: str,
+    request: Request,
+    authorization: str | None = Header(default=None),
+    x_emaw_user_id: str | None = Header(default=None, alias="X-EMAW-User-Id"),
+) -> dict[str, Any]:
+    """Remove a dead-letter entry without re-queue (admin)."""
+    user_id = await _actor(request, authorization, x_emaw_user_id)
+    if not _rbac(request).has_role(user_id, "admin"):
+        raise HTTPException(403, detail="admin_required")
+    try:
+        result = await discard_dead_letter(request.app.state.redis, message_id)
+    except KeyError:
+        raise HTTPException(404, detail="dead_letter_not_found") from None
+
+    await request.app.state.store.audit(
+        actor="operator-console",
+        event="dlq.discarded",
+        trace_id=result.get("trace_id") or None,
+        task_id=result.get("task_id") or None,
+        attrs={"dead_letter_id": message_id, "by_user": user_id},
+    )
+    return {"status": "discarded", **result}

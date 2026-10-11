@@ -39,7 +39,10 @@ cd operator-console && npm install && npm run dev
 Compose nginx proxies only `/api/internal/` and `/api/healthz` to the gateway — not
 webhooks, `/metrics`, or `/readyz` (safe when `CONSOLE_BIND=0.0.0.0`).
 
-Login: `HERMES_API_KEY` + Telegram user id from `config/rbac.yaml`.
+Login (DECISION-21): Telegram user id + per-user `console_secret` from `config/rbac.yaml`.
+Gateway sets an `HttpOnly` session cookie; the SPA never sees `HERMES_API_KEY`.
+Service callers (coordinator / verify scripts) still use Bearer + `X-EMAW-User-Id` on the
+control network.
 
 ## Screens (B)
 
@@ -51,6 +54,7 @@ Login: `HERMES_API_KEY` + Telegram user id from `config/rbac.yaml`.
 | Approvals inbox + history | `GET /internal/approvals?status=pending\|decided`, `POST …/decide` (`comment` optional) |
 | Audit search | `GET /internal/audit?task_id=\|trace_id=` |
 | Control | `GET/POST /internal/control/*` |
+| **System** | `GET /internal/ops/health`, `…/queues`, `…/dead-letter`; admin `POST …/retry` · `…/discard` |
 | Projects | `GET /internal/projects` |
 | Links | Hermes / Grafana use **page hostname** (LAN IP when Console is on LAN); MinIO/Prometheus stay `127.0.0.1` |
 

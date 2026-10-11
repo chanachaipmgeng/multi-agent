@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     hermes_api_key: str | None = Field(default=None, alias="HERMES_API_KEY")
     hermes_api_key_file: str | None = Field(default=None, alias="HERMES_API_KEY_FILE")
 
+    # --- console sessions (DECISION-21) ------------------------------------
+    session_ttl_seconds: int = Field(default=43_200, alias="SESSION_TTL_SECONDS")  # 12h
+    session_cookie_secure: bool = Field(default=False, alias="SESSION_COOKIE_SECURE")
+
     @model_validator(mode="after")
     def _resolve_secrets(self) -> Settings:
         if not self.gitlab_webhook_secret:

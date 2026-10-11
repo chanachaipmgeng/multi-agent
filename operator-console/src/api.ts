@@ -12,17 +12,23 @@ export class ApiError extends Error {
 }
 
 async function request<T>(
-  session: Session,
+  session: Session | null,
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
   const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${session.apiKey}`);
-  headers.set("X-EMAW-User-Id", session.userId);
+  const method = (init.method || "GET").toUpperCase();
+  if (session?.csrf && method !== "GET" && method !== "HEAD") {
+    headers.set("X-CSRF-Token", session.csrf);
+  }
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const res = await fetch(`${BASE}${path}`, { ...init, headers });
+  const res = await fetch(`${BASE}${path}`, {
+    ...init,
+    headers,
+    credentials: "include",
+  });
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -100,6 +106,29 @@ export type OpsSummary = {
 };
 
 export const api = {
+  login: (userId: string, consoleSecret: string) =>
+    request<{
+      user_id: number;
+      name: string;
+      roles: string[];
+      csrf: string;
+    }>(null, "/internal/auth/login", {
+      method: "POST",
+      body: JSON.stringify({
+        user_id: Number(userId),
+        console_secret: consoleSecret,
+      }),
+    }),
+  logout: () =>
+    request<{ status: string }>(null, "/internal/auth/logout", { method: "POST" }),
+  me: () =>
+    request<{
+      user_id: number;
+      name: string;
+      roles: string[];
+      csrf: string | null;
+      auth?: string;
+    }>(null, "/internal/auth/me"),
   listTasks: (s: Session, q: { project?: string; state?: string } = {}) => {
     const params = new URLSearchParams();
     if (q.project) params.set("project", q.project);
@@ -193,13 +222,72 @@ export const api = {
   },
   listUsers: (s: Session) =>
     request<{
-      users: Array<{ user_id: number; name: string; roles: string[] }>;
+      users: Array<{
+        user_id: number;
+        name: string;
+        roles: string[];
+        has_console_secret?: boolean;
+      }>;
       count: number;
     }>(s, "/internal/rbac/users"),
   opsSummary: (s: Session, recentLimit = 12) =>
     request<OpsSummary>(
       s,
       `/internal/ops/summary?recent_limit=${encodeURIComponent(String(recentLimit))}`,
+    ),
+  opsHealth: (s: Session) =>
+    request<{
+      gateway: { status: string; version?: string };
+      redis_ok: boolean;
+      store_ok: boolean;
+      ok: boolean;
+      stale_count: number;
+      heartbeat_stale_after_seconds: number;
+      heartbeats: Array<{
+        name: string;
+        key: string;
+        ts: number | null;
+        age_seconds: number | null;
+        stale: boolean;
+        missing?: boolean;
+        extra?: boolean;
+      }>;
+    }>(s, "/internal/ops/health"),
+  opsQueues: (s: Session) =>
+    request<{
+      streams: Array<{
+        stream: string;
+        consumer_group: string | null;
+        length: number;
+        pending: number | null;
+      }>;
+      count: number;
+    }>(s, "/internal/ops/queues"),
+  opsDeadLetter: (s: Session, limit = 50) =>
+    request<{
+      entries: Array<{
+        id: string;
+        task_id: string;
+        trace_id: string;
+        reason: string;
+        source_message_id?: string;
+        assigned_to?: string | null;
+        project?: string | null;
+        envelope_preview?: string;
+      }>;
+      count: number;
+    }>(s, `/internal/ops/dead-letter?limit=${encodeURIComponent(String(limit))}`),
+  dlqRetry: (s: Session, messageId: string) =>
+    request<{ status: string; task_id?: string; stream_id?: string }>(
+      s,
+      `/internal/ops/dead-letter/${encodeURIComponent(messageId)}/retry`,
+      { method: "POST" },
+    ),
+  dlqDiscard: (s: Session, messageId: string) =>
+    request<{ status: string; task_id?: string }>(
+      s,
+      `/internal/ops/dead-letter/${encodeURIComponent(messageId)}/discard`,
+      { method: "POST" },
     ),
   healthz: () => fetch(`${BASE}/healthz`).then((r) => r.json()),
 };

@@ -1,0 +1,11 @@
+[Unit]
+Description=EMAW daily backup timer
+Documentation=file:///opt/emaw/docs/runbooks/lan-host-7920.md
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

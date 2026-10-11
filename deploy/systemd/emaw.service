@@ -1,0 +1,20 @@
+[Unit]
+Description=EMAW LAN stack (make up-lan)
+Documentation=file:///opt/emaw/docs/runbooks/lan-host-7920.md
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/emaw
+EnvironmentFile=-/opt/emaw/.env
+# Prefer full path to make; adjust if make lives elsewhere.
+ExecStart=/usr/bin/make up-lan
+ExecStop=/usr/bin/make down
+TimeoutStartSec=0
+TimeoutStopSec=300
+
+[Install]
+WantedBy=multi-user.target
