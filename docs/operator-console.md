@@ -33,8 +33,11 @@ Local vite (dev):
 
 ```bash
 cd operator-console && npm install && npm run dev
-# proxies /api → http://127.0.0.1:8700
+# proxies /api/internal/* and /api/healthz → http://127.0.0.1:8700 (same allowlist as nginx)
 ```
+
+Compose nginx proxies only `/api/internal/` and `/api/healthz` to the gateway — not
+webhooks, `/metrics`, or `/readyz` (safe when `CONSOLE_BIND=0.0.0.0`).
 
 Login: `HERMES_API_KEY` + Telegram user id from `config/rbac.yaml`.
 

@@ -7,6 +7,7 @@ the dead-letter stream and the task becomes ``FAILED``.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -20,7 +21,7 @@ from . import metrics
 from .artifacts import ArtifactStore, NullArtifactStore
 from .breaker import CircuitBreaker
 from .control import ControlPlane
-from .dispatch import Dispatcher, dumps
+from .dispatch import Dispatcher, DispatchResult, dumps
 from .handoff import parse_handoff
 from .notify import (
     TelegramNotifier,
@@ -73,6 +74,9 @@ class Consumer:
         self.artifacts = artifacts or NullArtifactStore()
         self.processed = 0
         self.agent_name = settings.role or settings.single_agent_name
+        # Overridable in tests so a short sleep can prove mid-dispatch refresh.
+        self.heartbeat_interval_seconds = 30.0
+
     # ----------------------------------------------------------------- setup
     async def ensure_group(self) -> None:
         try:
@@ -89,31 +93,58 @@ class Consumer:
         await self.redis.set(self.s.heartbeat_key, str(int(time.time())), ex=180)
         Path(self.s.heartbeat_file).write_text(str(int(time.time())), encoding="utf-8")
 
+    async def _is_paused(self) -> bool:
+        return self.control is not None and await self.control.is_paused(self.agent_name)
+
     # ------------------------------------------------------------------ loop
     async def run_once(self, *, block_ms: int | None = None) -> int:
-        """Claim stale messages, then read new ones. Returns the number handled."""
-        if self.control is not None and await self.control.is_paused(self.agent_name):
+        """Claim stale messages, then read new ones. Returns the number handled.
+
+        Pause is checked before each message (including autoclaim). Messages already
+        delivered but not yet started are requeued (XADD + XACK) so resume can pick
+        them up via ``>`` without waiting for ``claim_min_idle_ms``, while failed
+        (in-progress) deliveries still follow the XAUTOCLAIM retry policy.
+        """
+        if await self._is_paused():
             await self.heartbeat()
-            # Sleep lightly by blocking with a short timeout — do not claim new work.
+            # Do not claim or read new work while paused.
             return 0
 
         handled = 0
-        handled += await self._claim_stale()
-        entries = await self.redis.xreadgroup(
-            self.s.consumer_group,
-            self.s.consumer_name,
-            {self.s.task_stream: ">"},
-            count=10,
-            block=self.s.block_ms if block_ms is None else block_ms,
+        n, stopped = await self._claim_stale()
+        handled += n
+        if stopped:
+            await self.heartbeat()
+            return handled
+
+        n, _stopped = await self._read_new(
+            block_ms=self.s.block_ms if block_ms is None else block_ms,
         )
-        for _stream, messages in entries or []:
-            for message_id, fields in messages:
-                await self.handle(_s(message_id), fields)
-                handled += 1
+        handled += n
         await self.heartbeat()
         return handled
 
-    async def _claim_stale(self) -> int:
+    async def _requeue(self, message_id: str, fields: dict[Any, Any]) -> None:
+        """Return a delivered-but-not-started message to the stream for later ``>`` reads."""
+        body = {_s(k): v for k, v in fields.items()}
+        await self.redis.xadd(self.s.task_stream, body)
+        await self.redis.xack(self.s.task_stream, self.s.consumer_group, message_id)
+        log.info("requeued %s after pause for %s", message_id, self.agent_name)
+
+    async def _handle_messages(self, messages: list[Any]) -> tuple[int, bool]:
+        """Handle messages one-by-one. Returns (handled, stopped_for_pause)."""
+        handled = 0
+        for idx, (message_id, fields) in enumerate(messages):
+            if await self._is_paused():
+                log.info("paused — requeueing remaining work for %s", self.agent_name)
+                for mid, flds in messages[idx:]:
+                    await self._requeue(_s(mid), flds)
+                return handled, True
+            await self.handle(_s(message_id), fields)
+            handled += 1
+        return handled, False
+
+    async def _claim_stale(self) -> tuple[int, bool]:
         _next, messages, _deleted = await self.redis.xautoclaim(
             self.s.task_stream,
             self.s.consumer_group,
@@ -122,9 +153,44 @@ class Consumer:
             start_id="0-0",
             count=10,
         )
-        for message_id, fields in messages:
-            await self.handle(_s(message_id), fields)
-        return len(messages)
+        return await self._handle_messages(messages)
+
+    async def _read_new(self, *, block_ms: int) -> tuple[int, bool]:
+        entries = await self.redis.xreadgroup(
+            self.s.consumer_group,
+            self.s.consumer_name,
+            {self.s.task_stream: ">"},
+            count=10,
+            block=block_ms,
+        )
+        handled = 0
+        for _stream, messages in entries or []:
+            n, stopped = await self._handle_messages(messages)
+            handled += n
+            if stopped:
+                return handled, True
+        return handled, False
+
+    async def _dispatch_with_heartbeat(
+        self, task: dict[str, Any], prompt: str
+    ) -> DispatchResult:
+        """Run dispatcher while refreshing the heartbeat so long jobs do not look dead."""
+        interval = self.heartbeat_interval_seconds
+
+        async def _beat_loop() -> None:
+            while True:
+                await asyncio.sleep(interval)
+                await self.heartbeat()
+
+        beat_task = asyncio.create_task(_beat_loop())
+        try:
+            return await self.dispatcher.dispatch(task, prompt)
+        finally:
+            beat_task.cancel()
+            try:
+                await beat_task
+            except asyncio.CancelledError:
+                pass
 
     # ---------------------------------------------------------------- handle
     async def _deliveries(self, message_id: str) -> int:
@@ -188,7 +254,7 @@ class Consumer:
             )
 
         prompt = build_prompt(task, enrichment)
-        result = await self.dispatcher.dispatch(task, prompt)
+        result = await self._dispatch_with_heartbeat(task, prompt)
 
         if result.ok:
             handoff = parse_handoff(result.output)

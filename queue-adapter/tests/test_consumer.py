@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 from pathlib import Path
 
 import httpx
 
 from app.consumer import Consumer
+from app.control import ControlPlane
 from app.dispatch import (
+    DispatchResult,
     DryRunDispatcher,
     HermesApiDispatcher,
     HermesCliDispatcher,
@@ -137,6 +141,100 @@ async def test_invalid_envelope_is_dead_lettered(consumer, fake_redis, settings)
 async def test_ensure_group_is_idempotent(consumer) -> None:
     await consumer.ensure_group()
     await consumer.ensure_group()
+
+
+async def test_pause_mid_batch_defers_remaining_then_resumes(
+    settings, fake_redis, store, gitlab, notifier
+) -> None:
+    """Pause after the first message in a batch; the rest stay pending until resume."""
+    control = ControlPlane(fake_redis)
+
+    class PauseAfterFirst:
+        name = "pause-after-first"
+
+        def __init__(self) -> None:
+            self.calls = 0
+            self.task_ids: list[str] = []
+
+        async def dispatch(self, task, prompt) -> DispatchResult:
+            self.calls += 1
+            self.task_ids.append(task["task_id"])
+            if self.calls == 1:
+                await control.pause("hermes-single")
+            return DispatchResult(ok=True, detail="ok", output="done")
+
+        async def aclose(self) -> None:
+            return None
+
+    dispatcher = PauseAfterFirst()
+    consumer = Consumer(
+        settings,
+        redis=fake_redis,
+        store=store,
+        dispatcher=dispatcher,
+        gitlab=gitlab,
+        notifier=notifier,
+        control=control,
+    )
+    await consumer.ensure_group()
+    await enqueue(fake_redis, settings, make_task(task_id="t-pause-1"))
+    await enqueue(fake_redis, settings, make_task(task_id="t-pause-2"))
+
+    handled = await consumer.run_once(block_ms=1)
+    assert handled == 1
+    assert dispatcher.calls == 1 and dispatcher.task_ids == ["t-pause-1"]
+    # Second message was requeued (acked + XADD), not left in the PEL.
+    assert await _pending(fake_redis, settings) == []
+
+    # Still paused: do not claim or dispatch the requeued message.
+    assert await consumer.run_once(block_ms=1) == 0
+    assert dispatcher.calls == 1
+
+    await control.resume("hermes-single")
+    handled = await consumer.run_once(block_ms=1)
+    assert handled == 1
+    assert dispatcher.calls == 2
+    assert dispatcher.task_ids == ["t-pause-1", "t-pause-2"]
+    assert await _pending(fake_redis, settings) == []
+
+
+async def test_heartbeat_refreshed_during_long_dispatch(
+    settings, fake_redis, store, gitlab, notifier
+) -> None:
+    """A slow dispatch must keep emaw:heartbeat:* fresh (TTL 180s)."""
+
+    class SlowDispatcher:
+        name = "slow"
+
+        async def dispatch(self, task, prompt) -> DispatchResult:
+            await asyncio.sleep(0.25)
+            return DispatchResult(ok=True, detail="ok", output="done")
+
+        async def aclose(self) -> None:
+            return None
+
+    consumer = Consumer(
+        settings,
+        redis=fake_redis,
+        store=store,
+        dispatcher=SlowDispatcher(),
+        gitlab=gitlab,
+        notifier=notifier,
+    )
+    consumer.heartbeat_interval_seconds = 0.05
+    await consumer.ensure_group()
+    await enqueue(fake_redis, settings, make_task(task_id="t-hb-1"))
+
+    # Stamp an old value; mid-dispatch beats must overwrite it.
+    old_ts = str(int(time.time()) - 120)
+    await fake_redis.set(settings.heartbeat_key, old_ts, ex=180)
+
+    await consumer.run_once(block_ms=1)
+
+    fresh = await fake_redis.get(settings.heartbeat_key)
+    assert fresh is not None
+    assert int(fresh) > int(old_ts)
+    assert Path(settings.heartbeat_file).exists()
 
 
 # ------------------------------------------------------------ dispatchers
