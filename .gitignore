@@ -41,8 +41,15 @@ venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.hypothesis/
 .ruff_cache/
 *.egg-info/
+*.egg
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
 build/
 dist/
 
@@ -63,13 +70,24 @@ offline-pack/
 scripts/_remote_*
 scripts/_local_dispatch_prove.py
 scripts/_fetch_key_tmp.py
-.tmp-console-key
-.tmp-minio.tar
+.tmp-*
+*.tmp
+*.bak
 
-# --- misc --------------------------------------------------------------------
+# --- misc & ide / os --------------------------------------------------------
 *.log
 .DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
 node_modules/
+.eslintcache
+.parcel-cache
+.vite/
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # Nested repo for agent worktrees (skill-acceptance)
 examples/sandbox-smoke/.git/
